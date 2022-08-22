@@ -1,0 +1,175 @@
+IntelliJ 
+
+1. ALT + ENTER -  현재 컨텍스트에 대한 액션을 표시
+
+2. F2 - 다음 오류, 경고 또는 제안으로 점프
+
+3. ALT + 1 - 프로젝트창 열고 닫기 
+   ALT + 4 - 실행(Run)창 열고 닫기
+   
+4. ESC - 에디터로 포커스 이동
+
+5. CTL + E - 최신 실행 파일 확인
+
+6. CTL + B - 코드내에서 다른 코드로 이동
+
+7. CTL + CTL - Run Anything
+
+8. CTL + W / CTL + SHIFT + W - 단어선택
+
+9. CTL + / - 주석처리
+
+10. CTL + SHITF + ENTER - 구문 완성
+ 
+11. CTL + ALT + L - 서식 지정
+
+12. Shift+Ctrl+Alt+T - 리펙토링
+
+13. Shift+Shift - 모두 검색 
+
+14. ALT + 마우스 왼쪽 드래그 - 세로모드 편집
+     --> SHIFT + CTL을 이용하여 단어 선택 
+
+15. CTL + 화살표 - 단어간 이동 
+
+16. CTL + ALT + ENTER - 에러 수정 
+
+17. CTL + ALT + L - 리포맷 코드 
+
+18. CTL + B - Declaration or Usage 
+
+19. SHIFT + CTL + F9 - Recompile 
+
+================================================================
+참조 - 백기선 인텔리제이(https://bit.ly/33TRM3L)
+
+Ctl + N --> New 
+Atl + Insert --> 코드 자동 생성 
+
+탐색 
+- 편집했던 마지막 위치로 이동하기 : Ctrl + Shift + Backspace
+- 에러가 난 곳으로 바로 이동하고 싶을 경우: F2 또는 Shift + F2
+- 소스코드에서 메서드 간에 이동을 하고 싶을 경우: Alt + Up/Down
+- 라인 처음/끝으로 이동: Home / End
+
+- Ctl + Click (Ctl + B) --> 코드 이동
+- Ctl + Shift + T --> 테스트 코드로 이동
+- Opt + Alt + 화살표 --> 이전 코드로 이동 
+- Shift + Ctl + Backspace --> last edit location
+
+
+컬럼 선택 모드로 get/set 쉽게 에디팅
+1. 컬럼(세로) 선택 모드 : Shift + Alt + Insert 
+2. Shift, Ctl을 이용하여 속성값 복사
+3. 대문자 변환 Shift + Ctrl + U을 이용하여 get/set 에디팅 
+
+
+코드이동
+- Ctrl + Shift + Up/Down : 특정 라인에 커서를 두고 단축키를 눌렀을때 해당 코드가 아래/위로 이동한다.
+- Alt + Shift + 1, 1 : Select Opened File
+
+코드생성
+1. Getter,Setter, Constructor 생성 : Alt + Insert
+2. 자동 완성 기능 : Ctrl + Shift + Space
+3. 코드 복사 : Ctrl + D
+: 특정 라인에 커서를 두고 단축키를 눌렀을 때, 해당 라인이 복사 된다.
+4. if, do~while, try-catch, run등의 구문의 braces등을 자동 완성하게 하는 기능 : Ctrl + Shift + Enter
+5. 메서드 파라미터 확인 : Ctrl + P
+: 특정 객체의 메서드 호출 시, 어떤 파라미터를 가지는지 확인할 때 유용하다. 메서드명( ) 에서 괄호 사이에 커서를 두고 해당 단축키를 누르면 된다.
+
+
+리펙토링 
+- CTL + ALT + V : Introduce Variable
+- SHIFT + F6: Rename
+- CTL + ALT + M : Extract Method
+  : Extract Method일 경우 2개 이상 중복코드 블록이 다른 패러미터로 있어서 제대로 작동함 
+  
+- CTL + ALT + P : Introduce Parameter
+
+
+
+실행 
+- SHIFT + F10 : 이전 코드 실행 
+- SHIFT + F9 : 디버깅 
+- CTL + SHIFT + F10 : 특정 코드 블럭 실행 
+- CTL + F2 : 실행 종료
+
+
+빌드
+- CTL + F9 : 빌드 (스트링부트 데브툴즈 사용시 자주 이용)
+- 현재 파일 재컴파일 Ctl + Shift + F9
+
+디버깅
+- CTL + F8 : 브레이크 포인트 설정 
+- F9 : Resume Program 
+
+테스팅
+- CTL + SHIFT + T : New Test Case
+
+검색
+- CTL + SHIFT + F : Find in Files 
+- CTL + E : Recent Files 
+- Shift + Shift --> Search Anywhere (편집창 밖에서 실행)
+
+뷰
+-  이클립스이 Outline 뷰 : Ctrl + F12
+
+Shift + Escape - Hide Window
+Ctrl + Shift + Quote(') - Maximize Bottom Window
+
+================================================================
+
+
+# 자동생성
+
+CMD + INSERT
+
+## iterate
+iter
+
+## Variable
+CTL + CMD + V
+
+## Method 
+CMD + ENTER
+
+# 실행, 디버깅
+SHIFT + F10
+
+# 리펙토링
+SHIFT + F6
+
+## Extract Method
+CTL + CMD + M
+
+# 에러 수정
+CMD + ENTER
+
+# 에디팅  
+CTL + Y - 한줄 삭제
+CTL + D - 한줄 복사
+
+# 에디터창 닫기
+CTL + F4
+
+================================================================
+Git
+
+git stash - 작업 내용 저장 
+git co <시작커밋> 
+git co -b 4-local
+git st
+
+git add
+git stash
+git st
+git co -b 4-local
+git st
+
+
+git co master
+git stash apply ???
+git stash list ---> 원하는 버전 선택
+
+
+

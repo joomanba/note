@@ -1,0 +1,58 @@
+# Most Common Git Mistakes
+(참조) https://javascript.plainenglish.io/7-most-common-git-mistakes-eefdd5a5b0
+
+1. Remove the file from Git without deleting it completely
+$ git reset bug.txt
+$ echo bug.txt >> .gitignore
+
+$ git reset HEAD // add 취소 
+
+2. Undo local commits
+$ git reset HEAD^ // 기본은 - mixed
+$ git reset --soft HEAD^ // indexed 유지
+
+3. edit the commit message
+$ git commit --amend -m "My new commit message"
+
+4. Change local commits before a push
+$ git rebase -i HEAD~3
+$ git rebase master dev // dev 브랜치의 모든 커밋의 base를 master 브랜치의 위치로 바꿔라!
+
+5. Undo pushed commits
+$ git revert HEAD^
+
+6. 머지(병합)한 내용을 되돌리고 싶을 경우
+$ git revert -m 1 <merge_commit>
+
+7. 이미 Push한 Commit 메시지 변경하기
+$ git commit --amend
+$ git push --force
+
+
+# Git Tool
+
+## tig
+$ tig --all
+h - keybindings
+
+
+# Git Comment
+
+```
+[fix | update | add]
+[fix | feature | bug]
+fix(middleware): ensure Range headers adhere more closely to RFC 2616
+
+Add one new dependency, use `range-parser` (Express dependency) to compute
+range. It is more well-tested in the wild.
+
+Fixes #2310
+```
+
+```
+[broadpeak] Add configMapKeyRef of jasypt.key to composite-bfs.yaml
+
+add(broadpeak) : add configMapKeyRef of jasypt.key to composite-bfs.yaml
+```
+
+

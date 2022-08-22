@@ -1,0 +1,132 @@
+Git
+
+# git 에서 CRLF 개행 문자 차이로 인한 문제 해결하기
+https://bit.ly/2XFDzYG
+
+$ git config --global -e
+
+[user]
+	email = joomanba@gmail.com
+	name = Jang Eui Jin
+[core]
+	autocrlf = input
+	editor = code --wait
+	
+	
+윈도우즈일 경우는
+git config --global core.autocrlf true	
+	
+
+
+-----------------------------------------------------------
+# git diff
+
+
+$ git diff
+
+$ git diff --staged 
+$ git diff --cached 
+
+$ git config --global -e
+
+[diff]
+	tool = vscode
+[difftool "vscode"]
+	cmd = code --wait --diff $LOCAL $REMOTE
+
+
+$ git difftool
+
+Viewing (1/1): 'c.txt'
+Launch 'vscode' [Y/n]? y
+
+$ git status -s
+ M c.txt
+?? .gitignore
+
+-----------------------------------------------------------
+# git commit 
+
+$ echo add >> c.txt
+$ git commit -am "thrid commit"
+$ git status -s                
+$ git log      
+
+# commit message
+Fix crashing on login module
+
+----------------------------------------------------------
+$ git rm style.css # staged 영역에서 제거 
+$ git mv style.css f.css # 파일 이름을 변경해서 staged 영역에 추가
+
+---------------------------------------------------------
+$ git history 
+
+$ git log --oneline # HEAD는 Master에 위치
+$ git checkout <커밋 해쉬값> # HEAD는 해당 커밋에 위치
+$ git log --online --reverse # 오래된 순서로 커밋 히스토리 조회 
+
+---------------------------------------------------------
+3.11 로그 이쁘게 만들기 (엘리의 포맷 공유)
+$ git log --oneline
+$ git log --oneline --graph --all # 모든 브랜치의 커밋 히스토리를 Graph 형태로 보기
+
+$ git log --graph --all --pretty=format:'%C(yellow)[%ad]%C(reset) %C(green)[%h]%C(reset) | %C(white)%s %C(bold red){{%an}}%C(reset) %C(blue)%d%C(reset)' --date=short
+
+$ git config --global alias.hist "log --graph --all --pretty=format:'%C(yellow)[%ad]%C(reset) %C(green)[%h]%C(reset) | %C(white)%s %C(bold red){{%an}}%C(reset) %C(blue)%d%C(reset)' --date=short"
+
+$ git hist
+
+---------------------------------------------------------
+3.12 로그 심화학습
+
+$ git log HEAD
+$ git log HEAD~2
+$ git show 0ad2db
+$ git show 0ad2db:user_repository.txt
+$ git dff d643a b8e48
+
+---------------------------------------------------------
+3.15 태그 데모
+
+$ git tag v1.0.0 0ad2dbb
+$ git tag v1.0.1 328708d -am "Release note..."
+$ git show v1.0.1
+$ git tag -l "v1.0.*"
+$ git tag -d "ellie"
+$ git checkout v2.0.0
+$ git checkout -b testing v2.0.0
+
+---------------------------------------------------------
+4.2 브랜치 기본 사용법
+$ git branch 
+$ git branch -v
+$ git brach new-branch
+$ git switch new-branch
+$ git checkout <커밋 해쉬 태그>
+$ git checkout master
+$ git checkout -b testing
+$ git branch --merged
+$ git branch --no-merged
+$ git merge fix
+$ git branch -d new-branch2
+
+---------------------------------------------------------
+4.3 머지란? fast-forward merge
+4.4 머지 옵션 --no-ff
+$ git merge --no-ff feature-c
+$ git branch -d feature-c
+
+---------------------------------------------------------
+4.5 머지의 중요한 컨셉, three-way merge
+4.6 Conflic 해결 방법
+
+
+
+
+
+
+
+
+	
+	
