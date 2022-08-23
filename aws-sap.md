@@ -4,7 +4,7 @@
 [AWS Certified Solutions Architect – Professional
 (SAP-C01) 시험 안내서](https://d1.awsstatic.com/ko_KR/training-and-certification/docs-sa-pro/AWS-Certified-Solutions-Architect-Professional_Exam-Guide.pdf)  
 
-응시자가 다음 태스크를 완료할 수 있는지 확인
+아래와 같은 자격요건 확인
 - AWS에서 동적으로 확장 가능하며 가용성이 높고 내결함성이 있으며 안정적인 애플리케이션을 설계 및 배포
 - 주어진 요구 사항을 기반으로 애플리케이션을 설계하고 배포하기에 적절한 AWS 선택
 - AWS에서 복잡한 멀티 티어 애플리케이션을 마이그레이션
@@ -72,8 +72,9 @@ Dump SAP-C01 V28.35.pdf
 
 ### 비공식
 - [아마존 웹 서비스를 다루는 기술 출간 및 원고 공개](http://pyrasis.com/private/2014/09/30/publish-the-art-of-amazon-web-services-book)
-- [비공식 AWS 공인 솔루션스 아키텍트 - 어소시에이트 SAA-C02 (2020년 3월 출시) 수험 가이드](https://github.com/serithemage/AWSCertifiedSolutionsArchitectUnofficialStudyGuide)
 - [AWS Certified Solutions Architect - Professional 시험 후기](https://gonigoni.kr/posts/aws-sap-c01/?utm_source=pocket_mylist)
 - [AWS 솔루션스 아키텍트 프로페셔널 시험 후기(2020년 9월)](https://techblog.kr/2020/09/10/aws-sa-pro-exam)
 - [AWS certified solution architect professional(SAP) 후기](https://overthecode.io/aws-certified-solution-architect-professional-review)
 - [AWS 자격증 준비를 위한 정리](https://logger.one/entry/AWS-%EC%9E%90%EA%B2%A9%EC%A6%9D-%EC%A4%80%EB%B9%84%EB%A5%BC-%EC%9C%84%ED%95%9C-%EC%A0%95%EB%A6%AC)
+- [비공식 AWS 공인 솔루션스 아키텍트 - 어소시에이트 SAA-C02 (2020년 3월 출시) 수험 가이드](https://github.com/serithemage/AWSCertifiedSolutionsArchitectUnofficialStudyGuide)
+- [AWS 솔루션 아키텍트 어소시에이트 자격증 취득 후기](https://www.44bits.io/ko/post/aws-certification-solutions-architect-associate)
