@@ -613,6 +613,151 @@ Finally, create the Daemonset by running `kubectl create -f fluentd.yaml`
 ### Static Pods
 Static Pods are managed directly by the kubelet daemon on a specific node, without the API server observing them. Unlike Pods that are managed by the control plane
 
+1. How many static pods exist in this cluster in all namespaces?
+- Run the command `kubectl get pods --all-namespaces` and look for those with `-controlplane` appended in the name
+- `ownerReference`가 `Node`인지 확인
+
+2. What is the path of the directory holding the static pod definition files?
+- `/var/lib/kubelet/config.yaml`에서 `staticPodPath` 확인: `/etc/kubernetes/manifests`
+
+```
+cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep image
+    image: k8s.gcr.io/kube-apiserver:v1.23.0
+    imagePullPolicy: IfNotPresent
+```
+
+3. Create a static pod named `static-busybox` that uses the `busybox` image and the command `sleep 1000`
+```
+k run static-busybox --image=busybox --dry-run=client -o yaml > static-busybox.yaml
+
+# static-busybox.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: static-busybox
+spec:
+  containers:
+  - image: busybox
+    name: static-busybox
+    command: ["sleep"]
+    args: ["1000"]
+```
+
+```bash
+root@controlplane:~# kubectl run static-busybox --image=busybox --restart=Never --dry-run=client -o yaml --command -- sleep 10000
+```
+
+4. We just created a new static pod named static-greenbox. Find it and delete it. This question is a bit tricky. But if you use the knowledge you gained in the previous questions in this lab, you should be able to find the answer to it.
+
+Identify which node the static pod is created on, ssh to the node and delete the pod definition file.
+If you don't know the IP of the node, run the `kubectl get nodes -o wide` command and identify the IP.
+Then, SSH to the node using that IP. For static pod manifest path look at the file `/var/lib/kubelet/config.yaml` on node01
+
+First, let's identify the node in which the pod called static-greenbox is created. To do this, run:
+```bash
+root@controlplane:~# kubectl get pods --all-namespaces -o wide  | grep static-greenbox
+default       static-greenbox-node01                 1/1     Running   0          19s     10.244.1.2   node01       <none>           <none>
+root@controlplane:~#
+```
+
+From the result of this command, we can see that the pod is running on node01.  
+Next, SSH to `node01` and identify the path configured for static pods in this node.  
+`Important`: The path need not be `/etc/kubernetes/manifests`.  
+Make sure to check the path configured in the kubelet configuration file.
+
+```bash
+root@controlplane:~# ssh node01 
+root@node01:~# ps -ef |  grep /usr/bin/kubelet 
+root       752   654  0 00:30 pts/0    00:00:00 grep --color=auto /usr/bin/kubelet
+root     28567     1  0 00:22 ?        00:00:11 /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --config=/var/lib/kubelet/config.yaml --network-plugin=cni --pod-infra-container-image=k8s.gcr.io/pause:3.2
+root@node01:~# grep -i staticpod /var/lib/kubelet/config.yaml
+staticPodPath: /etc/just-to-mess-with-you
+root@node01:~# 
+```
+Here the staticPodPath is `/etc/just-to-mess-with-you`  
+Navigate to this directory and delete the YAML file:
+
+```bash
+root@node01:/etc/just-to-mess-with-you# ls
+greenbox.yaml
+root@node01:/etc/just-to-mess-with-you# rm -rf greenbox.yaml 
+root@node01:/etc/just-to-mess-with-you#
+```
+
+Exit out of node01 using CTRL + D or type exit. You should return to the controlplane node. 
+Check if the static-greenbox pod has been deleted:
+
+### Multiple Schedulers
+
+1. What is the name of the POD that deploys the default kubernetes scheduler in this environment?
+```bash
+root@controlplane ~ ➜  k get po -n kube-system
+```
+
+2. Create a configmap with name `my-scheduler-config` using the content of file `/root/my-scheduler-config.yaml`
+```bash
+root@controlplane ~ ➜  k create -n kube-system configmap my-scheduler-config --from-file=/root/my-scheduler-config.yaml
+```
+
+3. Deploy an additional scheduler to the cluster following the given specification. Use the manifest file provided at /root/my-scheduler.yaml. Use the same image as used by the default kubernetes scheduler.
+
+```yaml
+# /root/my-scheduler.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: my-scheduler
+  name: my-scheduler
+  namespace: kube-system
+spec:
+  serviceAccountName: my-scheduler
+  containers:
+  - command:
+    - /usr/local/bin/kube-scheduler
+    - --config=/etc/kubernetes/my-scheduler/my-scheduler-config.yaml
+    image: k8s.gcr.io/kube-scheduler:v1.23.0
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 10259
+        scheme: HTTPS
+      initialDelaySeconds: 15
+    name: kube-second-scheduler
+    readinessProbe:
+      httpGet:
+        path: /healthz
+        port: 10259
+        scheme: HTTPS
+    resources:
+      requests:
+        cpu: '0.1'
+    securityContext:
+      privileged: false
+    volumeMounts:
+      - name: config-volume
+        mountPath: /etc/kubernetes/my-scheduler
+  hostNetwork: false
+  hostPID: false
+  volumes:
+    - name: config-volume
+      configMap:
+        name: my-scheduler-config
+```
+
+4. A POD definition file is given. Use it to create a POD with the new custom scheduler. File is located at /root/nginx-pod.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  schedulerName: my-scheduler
+  containers:
+  - image: nginx
+    name: nginx
+```
+
 ---
 ```
 apiVersion: 
