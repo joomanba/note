@@ -28,7 +28,6 @@
 ## 시험준비
 - 시험을 먼저 등록 ([자격증 안내 및 시험 일정 예약](https://aws.amazon.com/ko/certification/certified-solutions-architect-professional/))
 
-## 준비전략
 ### 강의수강
 [Ultimate AWS Certified Solutions Architect Professional 2022 (Udemy)](https://www.udemy.com/course/aws-solutions-architect-professional/)
 - 슬라이드 기준으로 설명, Hands-On 없음
