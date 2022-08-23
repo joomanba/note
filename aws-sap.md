@@ -19,7 +19,7 @@
 4. Cost Control (12.5%)
 5. Continuous Improvement for Existing Solutions (29%)
 
-### SAA의 차이점
+### SAP vs SAA
 1. SAA는 개념위주라면, SAP는 시나리오 위주 문제로 구성 (질문이 길고 복잡)
 2. SAP는 복수정답의 문제가 많이 출제, 최선의 방법이나 해결책을 찾아야 함
 3. `마이그레이션, 조직 복잡성을 고려한 설계, 지속적인 개선`을 묻는 문제들이 집중적으로 출제 

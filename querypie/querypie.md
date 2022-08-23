@@ -38,6 +38,9 @@
 - M/W: m5.xlarge, 2TB (디스크 캐시 사용 등으로 높은 디스크 용량이 필요)
 - Proxy: m5.xlarge, 50GB
 
+### Network Requirements
+[Network Requirements](https://chequer.notion.site/Network-Requirements-4d30dde01919452db81edf5fbc6a238e)
+
 ## PoC
 
 ![Querypie 설치 환경](images/querypie-network-02.png)
