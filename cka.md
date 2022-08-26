@@ -758,6 +758,308 @@ spec:
     name: nginx
 ```
 
+## 4. Logging & Monitoring
+### Monitor Cluster Components
+
+1. Let us deploy metrics-server to monitor the PODs and Nodes. Pull the git repository for the deployment files.
+
+```bash
+# git clone https://github.com/kodekloudhub/kubernetes-metrics-server.git
+
+# k create -f .    
+```
+
+2. Identify the node that consumes the most CPU.
+```bash
+# k top node
+NAME           CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+controlplane   326m         0%     1204Mi          0%        
+node01         32m          0%     345Mi           0%        
+```
+
+3. Identify the POD that consumes the most Memory.
+```bash
+# k top po
+NAME       CPU(cores)   MEMORY(bytes)   
+elephant   20m          32Mi            
+lion       1m           18Mi            
+rabbit     139m         252Mi           
+```
+
+### Managing Application Logs
+1. A user - USER5 - has expressed concerns accessing the application. Identify the cause of the issue.
+```bash
+# k logs webapp-1
+```
+
+2. A user is reporting issues while trying to purchase an item. Identify the user and the cause of the issue.
+```bash
+# k get po webapp-2 --watch
+NAME       READY   STATUS    RESTARTS   AGE
+webapp-2   2/2     Running   0          33s
+
+# k logs webapp-2 
+error: a container name must be specified for pod webapp-2, choose one of: [simple-webapp db]
+
+# k logs webapp-2 simple-webapp
+...
+[2022-08-24 00:56:01,413] WARNING in event-simulator: USER30 Order failed as the item is OUT OF STOCK.
+...
+```
+
+## 5. Application Lifecycle Management
+### Rolling Updates and Rollbacks
+
+1. Inspect the deployment and identify the current strategy
+
+```bash
+# k get all
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/frontend-5c74c57d95-mhqnd   1/1     Running   0          3m36s
+pod/frontend-5c74c57d95-wpfnv   1/1     Running   0          3m36s
+pod/frontend-5c74c57d95-srbbd   1/1     Running   0          3m36s
+pod/frontend-5c74c57d95-9qzj9   1/1     Running   0          3m36s
+...
+
+# k describe deploy frontend
+...
+StrategyType:           RollingUpdate
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  name=webapp
+  Containers:
+   simple-webapp:
+    Image:        kodekloud/webapp-color:v1
+...
+```
+
+2. Let us try that. Upgrade the application by setting the image on the deployment to `kodekloud/webapp-color:v2`
+```bash
+# k edit deploy frontend
+```
+
+3. k edit deploy frontend
+```yaml
+...
+spec:
+  ...
+  strategy:
+    type: Recreate
+```
+
+### Commands and Arguments
+1. Create a pod with the ubuntu image to run a container to sleep for 5000 seconds. Modify the file ubuntu-sleeper-2.yaml
+```yaml
+apiVersion: v1
+kind: Pod 
+metadata:
+  name: ubuntu-sleeper-2
+spec:
+  containers:
+  - name: ubuntu
+    image: ubuntu
+    command: ["sleep"]
+    args: ["5000"]
+```
+
+```yaml
+apiVersion: v1
+kind: Pod 
+metadata:
+  name: ubuntu-sleeper-3
+spec:
+  containers:
+  - name: ubuntu
+    image: ubuntu
+    command:
+      - "sleep"
+      - "1200"
+```
+
+### Configure Environment Variables 
+1. Update the environment variable on the POD to display a `green` background
+
+```bash
+# k edit po webapp-color
+# k replace --force -f /tmp/kubectl-edit-000000000.yaml
+```
+
+
+2. Create a new ConfigMap for the `webapp-color` POD. Use the spec given below.
+```bash
+# kubectl create configmap webapp-config-map --from-literal=APP_COLOR=darkblue
+```
+
+```yaml
+# webapp-config-map.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-config-map
+data:
+  APP_COLOR: "darkblue"
+```
+
+```bash
+#  k get cm 
+NAME                DATA   AGE
+kube-root-ca.crt    1      20m
+db-config           3      8m28s
+webapp-config-map   1      31s
+```
+
+```yaml
+  containers:
+  - envFrom:
+    - configMapRef:
+        name: webapp-config-map
+```
+
+### Configure Secrets in Applications
+
+**A note about Secrets**  
+Secrets are not encrypted, so it is not safer in that sense. However, some best practices around using secrets make it safer. As in best practices like:
+- Not checking-in secret object definition files to source code repositories.
+- [Enabling Encryption at Rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/) for Secrets so they are stored encrypted in ETCD. 
+
+Also the way kubernetes handles secrets. Such as:
+- A secret is only sent to a node if a pod on that node requires it.
+- Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
+- Once the Pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
+
+1. How many secrets are defined in the default-token secret?
+
+There are three secrets - ca.crt, namespace and token.
+```
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     570 bytes
+namespace:  7 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6Ii1fY2MzNjQxUmhWYlFpTW5DZzJ2NHJoR25XLUxpYmZpcF9xNkF6VlZ1RDgifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3B
+```
+
+2. The reason the application is failed is because we have not created the secrets yet. Create a new secret named db-secret with the data given below.
+
+```bash
+# k create secret --help
+# k create secret generic --help
+
+# k create secret generic db-secret --from-literal=DB_Host=sql01 --from-literal=DB_User=root --from-literal=DB_Password=password123
+```
+
+```yaml
+apiVersion: v1
+data:
+  DB_Host: c3FsMDE=
+  DB_Password: cGFzc3dvcmQxMjM=
+  DB_User: cm9vdA==
+kind: Secret
+metadata:
+  name: db-secret
+type: Opaque
+```
+
+3. Configure `webapp-pod` to load environment variables from the newly created secret. Delete and recreate the pod if required.
+
+```yaml
+containers:
+  - name: webapp
+    image: kodekloud/simple-webapp-mysql
+    envFrom:
+    - secretRef:
+        name: db-secret
+```
+
+```bash
+# k edit po webapp-pod
+error: pods "webapp-pod" is invalid
+A copy of your changes has been stored to "/tmp/kubectl-edit-1890615175.yaml"
+error: Edit cancelled, no valid changes were saved.
+
+# k replace --force -f /tmp/kubectl-edit-1890615175.yaml
+```
+
+### Multi Container PODs
+1. Create a multi-container pod with 2 containers.
+
+```txt
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+```
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: yellow
+spec:
+  containers:
+  - image: busybox
+    name: lemon
+    command:
+      - "sleep"     
+      - "1000"     
+  - image: redis
+    name: gold  
+```
+
+```bash
+# k replace --force -f yellow.yaml 
+pod "yellow" deleted
+pod/yellow replaced
+```
+
+2. Configure a sidecar container for the application to send logs to Elastic Search. 
+```bash
+# kubectl -n elastic-stack logs kibana
+```
+
+3. The application outputs logs to the file /log/app.log. View the logs and try to identify the user having issues with Login
+
+```bash
+# kubectl -n elastic-stack exec -it app -- cat /log/app.log
+```
+
+4. Edit the pod to add a sidecar container to send logs to Elastic Search. Mount the log volume to the sidecar container. Only add a new container. Do not modify anything else. Use the spec provided below.
+
+![sidecar container](images/kubernetes-ckad-elastic-stack-sidecar_l4d1ga.png)  
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+  namespace: elastic-stack
+  labels:
+    name: app
+spec:
+  containers:
+  - name: app
+    image: kodekloud/event-simulator
+    volumeMounts:
+    - mountPath: /log
+      name: log-volume
+
+  - name: sidecar
+    image: kodekloud/filebeat-configured
+    volumeMounts:
+    - mountPath: /var/log/event-simulator/
+      name: log-volume
+
+  volumes:
+  - name: log-volume
+    hostPath:
+      # directory location on host
+      path: /var/log/webapp
+      # this field is optional
+      type: DirectoryOrCreate
+```
+
+5. Inspect the Kibana UI. You should now see logs appearing in the Discover section.
+
+
 ---
 ```
 apiVersion: 
