@@ -75,5 +75,8 @@ $ popd
 $ popd
 ```
 
-
+#### untill
+```bash
+# sh -c "until nslookup mydb; do echo waiting for mydb; sleep 2; done;"
+```
 

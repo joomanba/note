@@ -1059,6 +1059,66 @@ spec:
 
 5. Inspect the Kibana UI. You should now see logs appearing in the Discover section.
 
+### InitContainers
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+  - name: myapp-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+  initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c', 'git clone <some-repository-that-will-be-used-by-application> ; done;']
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+  - name: myapp-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+  initContainers:
+  - name: init-myservice
+    image: busybox:1.28
+    command: ['sh', '-c', 'until nslookup myservice; do echo waiting for myservice; sleep 2; done;']
+  - name: init-mydb
+    image: busybox:1.28
+    command: ['sh', '-c', 'until nslookup mydb; do echo waiting for mydb; sleep 2; done;']
+```
+
+
+1. What is the state of the initContainer on pod blue
+
+```yaml
+Init Containers:
+  init-myservice:
+    ...
+    State:          Terminated
+```
+
+2. Update the pod red to use an `initContainer` that uses the `busybox` image and `sleeps for 20` seconds
+```yaml
+  initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c', 'sleep 20']
+```
+
+3. A new application orange is deployed. There is something wrong with it. Identify and fix the issue.
 
 ---
 ```
