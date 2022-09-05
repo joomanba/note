@@ -1346,6 +1346,140 @@ When this file is updated, the ETCD pod is automatically re-created as this is a
 
 > Note 3: This is the simplest way to make sure that ETCD uses the restored data after the ETCD pod is recreated. You don't have to change anything else.
 
+
+### Practice Test Backup and Restore Methods 2
+1. How many clusters are defined in the kubeconfig on the student-node?
+
+```bash
+# kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://cluster1-controlplane:6443
+  name: cluster1
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://10.2.37.21:6443
+  name: cluster2
+```
+
+2. How many nodes (both controlplane and worker) are part of cluster1?
+
+```bash
+student-node ~ #  kubectl config use-context cluster1
+Switched to context "cluster1".
+
+student-node ~ #  k get nodes
+NAME                    STATUS   ROLES           AGE   VERSION
+cluster1-controlplane   Ready    control-plane   35m   v1.24.0
+cluster1-node01         Ready    <none>          34m   v1.24.0
+```
+
+3. How is ETCD configured for cluster1?
+
+```bash
+student-node ~ #  kubectl config use-context cluster1
+Switched to context "cluster1".
+
+student-node ~ #  kubectl get pods -n kube-system | grep etcd
+etcd-cluster1-controlplane                      1/1     Running   0              9m26s
+
+student-node ~ #  
+```
+
+This means that ETCD is set up as a `Stacked ETCD` Topology where the distributed data storage cluster provided by etcd is stacked on top of the cluster formed by the nodes managed by kubeadm that run control plane components.
+
+4. What is the IP address of the External ETCD datastore used in cluster2?
+
+```bash
+# k describe po kube-apiserver-cluster2-controlplane -n kube-system
+...
+Containers:
+  kube-apiserver:
+  ...
+      --etcd-servers=https://10.5.137.9:2379
+```
+
+5. What is the default data directory used the for ETCD datastore used in cluster1?
+
+```bash
+Containers:
+  etcd:
+    ...
+      --data-dir=/var/lib/etcd
+```
+
+6. What is the default data directory used the for ETCD datastore used in cluster2?
+Remember, this cluster uses an External ETCD topology.
+
+'/var/lib/etcd-data/'
+
+7. How many other nodes are part of the ETCD cluster that etcd-server is a part of?
+
+```
+--advertise-client-urls=https://10.12.4.18:2379
+--listen-client-urls=https://127.0.0.1:2379,https://10.12.4.18:2379
+```
+
+```bash
+etcd-server ~ #  ETCDCTL_API=3 etcdctl \
+ --endpoints=https://127.0.0.1:2379 \
+ --cacert=/etc/etcd/pki/ca.pem \
+ --cert=/etc/etcd/pki/etcd.pem \
+ --key=/etc/etcd/pki/etcd-key.pem \
+  member list
+f0f805fc97008de5, started, etcd-server, https://10.1.218.3:2380, https://10.1.218.3:2379, false 
+```
+
+8. Take a backup of etcd on cluster1 and save it on the student-node at the path /opt/cluster1.db
+
+Next, inspect the endpoints and certificates used by the `etcd` pod. We will make use of these to take the backup.
+
+```bash
+student-node # ✖ kubectl describe  pods -n kube-system etcd-cluster1-controlplane  | grep advertise-client-urls
+      --advertise-client-urls=https://10.1.218.16:2379
+
+student-node # ➜  
+
+student-node # ➜  kubectl describe  pods -n kube-system etcd-cluster1-controlplane  | grep pki
+      --cert-file=/etc/kubernetes/pki/etcd/server.crt
+      --key-file=/etc/kubernetes/pki/etcd/server.key
+      --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+      --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+      --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+      /etc/kubernetes/pki/etcd from etcd-certs (rw)
+    Path:          /etc/kubernetes/pki/etcd
+
+student-node ~ ➜  
+```
+
+SSH to the `controlplane` node of `cluster1` and then take the backup using the endpoints and certificates we identified above:
+
+```bash
+cluster1-controlplane ~ #  ETCDCTL_API=3 etcdctl \
+--endpoints=https://10.1.220.8:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key \
+snapshot save /opt/cluster1.db
+
+
+cluster1-controlplane ~ ➜  
+```
+
+Finally, copy the backup to the `student-node`. To do this, go back to the `student-node` and use scp as shown below:
+
+```bash
+student-node ~ #  scp cluster1-controlplane:/opt/cluster1.db /opt
+cluster1.db                                                                                                        100% 2088KB 112.3MB/s   00:00    
+
+student-node ~ # 
+```
+
+
+
 ## 7. Security
 [Kubernetes Certificate Health Check Spreadsheet](https://github.com/mmumshad/kubernetes-the-hard-way/tree/master/tools)
 ### View Certificates
@@ -1986,7 +2120,217 @@ NAME            READY   STATUS    RESTARTS   AGE
 dark-blue-app   1/1     Running   0          32m  
 ```
 
+8. Add a new rule in the existing role `developer` to grant the `dev-user` permissions to create deployments in the `blue` namespace.
 
+Remember to add api group "apps".
+
+```bash
+# kubectl edit role developer -n blue
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - watch
+  - create
+  - delete
+```
+
+```bash
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: blue
+rules:
+- apiGroups:
+  - apps
+  resourceNames:
+  - dark-blue-app
+  resources:
+  - pods
+  verbs:
+  - get
+  - watch
+  - create
+  - delete
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - watch
+  - create
+  - delete
+```
+
+### Cluster Roles
+
+1. How many ClusterRoles do you see defined in the cluster?
+
+```bash
+# kubectl get clusterroles --no-headers | wc -l
+69
+
+# kubectl get clusterroles --no-headers -o json | jq '.items | length'
+69
+```
+
+2. What user/groups are the `cluster-admin` role bound to?
+
+```bash
+# kubectl describe clusterrolebinding cluster-admin
+Name:         cluster-admin
+Labels:       kubernetes.io/bootstrapping=rbac-defaults
+Annotations:  rbac.authorization.kubernetes.io/autoupdate: true
+Role:
+  Kind:  ClusterRole
+  Name:  cluster-admin
+Subjects:
+  Kind   Name            Namespace
+  ----   ----            ---------
+  Group  system:masters 
+```
+
+3. What level of permission does the cluster-admin role grant?
+
+```bash
+# kubectl describe clusterrole cluster-admin
+Name:         cluster-admin
+Labels:       kubernetes.io/bootstrapping=rbac-defaults
+Annotations:  rbac.authorization.kubernetes.io/autoupdate: true
+PolicyRule:
+  Resources  Non-Resource URLs  Resource Names  Verbs
+  ---------  -----------------  --------------  -----
+  *.*        []                 []              [*]
+             [*]                []              [*]
+```
+
+4. A new user `michelle` joined the team. She will be focusing on the nodes in the cluster. Create the required `ClusterRoles` and `ClusterRoleBindings` so she gets access to the nodes.
+
+```yaml
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: node-admin
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: michelle-binding
+subjects:
+- kind: User
+  name: michelle
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: node-admin
+  apiGroup: rbac.authorization.k8s.io
+```
+
+After save into a file, run the command `kubectl create -f <file-name>.yaml` to create a resources from definition file.
+
+```bash
+# kubectl auth can-i list nodes --as michelle
+Warning: resource 'nodes' is not namespace scoped
+yes
+```
+
+5. michelle's responsibilities are growing and now she will be responsible for `storage` as well. Create the required `ClusterRoles` and `ClusterRoleBindings` to allow her access to Storage.
+
+Get the API groups and resource names from command `kubectl api-resources`. Use the given spec:
+
+```yaml
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-admin
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: michelle-storage-admin
+subjects:
+- kind: User
+  name: michelle
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: storage-admin
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Service Account
+1. What is the secret token used by the default service account?
+
+```bash
+# kubectl describe sa default
+Name:                default
+Namespace:           default
+...
+Mountable secrets:   default-token-9z7v2
+Tokens:              default-token-9z7v2
+Events:              <none>
+```
+
+2. What is the state of the dashboard? Have the pod details loaded successfully?
+
+```txt
+pods is forbidden: User "system:serviceaccount:default:default" cannot list resource "pods" in API group "" in the namespace "default"
+```
+
+3. What type of account does the Dashboard application use to query the Kubernetes API?
+
+`Service Account`
+
+4. Which account does the Dashboard application use to query the Kubernetes API?  
+
+Again, the name of the Service Account is displayed in the error message on the dashboard. The deployment makes use of the `default` service account which we inspected earlier.
+
+```bash
+# kubectl get po web-dashboard-767bc588bc-bxdhq -o yaml
+...
+spec:
+  containers:
+  - env:
+  ...
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+```
+
+5. At what location is the ServiceAccount credentials available within the pod?
+
+```bash
+# k describe po web-dashboard-767bc588bc-bxdhq
+
+Containers:
+  web-dashboard:
+    ...
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-7qxqb (ro)
+```
+
+6. The application needs a ServiceAccount with the Right permissions to be created to authenticate to Kubernetes. The default ServiceAccount has limited access. Create a new ServiceAccount named dashboard-sa.
+
+- Service Account Name: dashboard-sa
 
 
 
