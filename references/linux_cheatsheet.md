@@ -80,3 +80,9 @@ $ popd
 # sh -c "until nslookup mydb; do echo waiting for mydb; sleep 2; done;"
 ```
 
+#### tr
+특정 문제를 변환하거나 삭제하는 명령어입니다.
+```bash
+cat /root/CKA/john.csr | base64 | tr -d "\n"
+```
+

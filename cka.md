@@ -1225,7 +1225,9 @@ etcd                      3.4.9-1   3.4.9-1
 
 4. Upgrade the `controlplane` components to exact version `v1.20.0`
 
-[Upgrading kubeadm clusters](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/)
+[Upgrading kubeadm clusters](https://kubernetes.
+
+1gio/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/)
 
 Upgrade kubeadm tool (if not already), then the master components, and finally the kubelet. Practice referring to the kubernetes documentation page. Note: While upgrading kubelet, if you hit dependency issue while running the `apt-get upgrade kubelet` command, use the `apt install kubelet=1.20.0-00` command instead
 
@@ -2332,7 +2334,2484 @@ Containers:
 
 - Service Account Name: dashboard-sa
 
+```bash
+# kubectl create serviceaccount dashboard-sa
+```
+
+7. You shouldn't have to copy and paste the token each time. The Dashboard application is programmed to read token from the secret mount location. However currently, the default service account is mounted. Update the deployment to use the newly created ServiceAccount
+
+Edit the deployment to change ServiceAccount from default to dashboard-sa
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-dashboard
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: web-dashboard
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        name: web-dashboard
+    spec:
+      serviceAccountName: dashboard-sa
+      containers:
+      - image: gcr.io/kodekloud/customimage/my-kubernetes-dashboard
+        imagePullPolicy: Always
+        name: web-dashboard
+        ports:
+        - containerPort: 8080
+          protocol: TCP                          
+```
+
+### Image Security
+
+1. What secret type must we choose for docker registry?
+
+```bash
+# kubectl create secret --help
+Create a secret using specified subcommand.
+
+Available Commands:
+  docker-registry Create a secret for use with a Docker registry
+  generic         Create a secret from a local file, directory or literal value
+  tls             Create a TLS secret
+```
+
+2. We decided to use a modified version of the application from an internal private registry. Update the image of the deployment to use a new image from `myprivateregistry.com:5000`
+
+```bash
+# kubectl edit deploy web
+...
+    spec:
+      containers:
+      - image: myprivateregistry.com:5000/nginx:alpine
+
+# kubectl get po
+NAME                   READY   STATUS         RESTARTS   AGE
+web-85fcf65896-zmhwv   0/1     ErrImagePull   0          40s      
+```
+
+3. Create a secret object with the credentials required to access the registry.
+
+- Name: private-reg-cred
+- Username: dock_user
+- Password: dock_password
+- Server: myprivateregistry.com:5000
+- Email: dock_user@myprivateregistry.com
+
+Run the command: 
+```bash
+kubectl create secret docker-registry private-reg-cred --docker-username=dock_user --docker-password=dock_password --docker-server=myprivateregistry.com:5000 --docker-email=dock_user@myprivateregistry.com
+```
+
+4. Configure the deployment to use credentials from the new secret to pull images from the private registry
+
+```bash
+# kubectl edit deploy web
+...
+      containers:
+      - image: myprivateregistry.com:5000/nginx:alpine
+        ...
+      imagePullSecrets:
+      - name: private-reg-cred  
+```
+
+### Security Contexts
+1. What is the user used to execute the sleep process within the ubuntu-sleeper pod?  
+
+Run the command: `kubectl exec ubuntu-sleeper -- whoami` and check the user that is running the container.
+
+2. Edit the pod `ubuntu-sleeper` to run the sleep process with user `ID 1010`.
+
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper
+  namespace: default
+spec:
+  securityContext:
+    runAsUser: 1010
+  containers:
+  - command:
+    - sleep
+    - "4800"
+    image: ubuntu
+    name: ubuntu-sleeper/
+```
+
+3. A Pod definition file named multi-pod.yaml is given. With what user are the processes in the web container started?
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-pod
+spec:
+  securityContext:
+    runAsUser: 1001
+  containers:
+  -  image: ubuntu
+     name: web
+     command: ["sleep", "5000"]
+     securityContext:
+      runAsUser: 1002
+
+  -  image: ubuntu
+     name: sidecar
+     command: ["sleep", "5000"]
+```
+
+4. With what user are the processes in the sidecar container started?
+
+> The User ID defined in the securityContext of the POD is carried over to all the containers in the Pod.
+
+5. Update pod ubuntu-sleeper to run as Root user and with the SYS_TIME capability.  
+
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper
+  namespace: default
+spec:
+  containers:
+  - command:
+    - sleep
+    - "4800"
+    image: ubuntu
+    name: ubuntu-sleeper
+    securityContext:
+      capabilities:
+        add: ["SYS_TIME"]
+```
+
+6. Now update the pod to also make use of the `NET_ADMIN` capability
+
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper
+  namespace: default
+spec:
+  containers:
+  - command:
+    - sleep
+    - "4800"
+    image: ubuntu
+    name: ubuntu-sleeper
+    securityContext:
+      capabilities:
+        add: ["SYS_TIME", "NET_ADMIN"]
+```
+
+### Network Policy
+1. How many network policies do you see in the environment?
+
+```bash
+# kubectl get networkpolicy
+NAME             POD-SELECTOR   AGE
+payroll-policy   name=payroll   90s
+```
+
+```bash
+# kubectl describe networkpolicy payroll-policy
+Name:         payroll-policy
+Namespace:    default
+Created on:   2022-09-08 23:42:28 +0000 UTC
+Labels:       <none>
+Annotations:  <none>
+Spec:
+  PodSelector:     name=payroll
+  Allowing ingress traffic:
+    To Port: 8080/TCP
+    From:
+      PodSelector: name=internal
+  Not affecting egress traffic
+  Policy Types: Ingress
+```
+
+2. What type of traffic is this Network Policy configured to handle?
+
+3. Access the UI of these applications using the link given above the terminal.
+
+![kubernetes-ckad-network-policies](images/kubernetes-ckad-network-policies-6.jpg)
+
+
+4. Create a network policy to allow traffic from the Internal application only to the payroll-service and db-service.
+
+![kubernetes-ckad-network-policies](images/kubernetes-ckad-network-policies-9.jpg)
+
+- [The NetworkPolicy resource](https://kubernetes.io/docs/concepts/services-networking/network-policies/#networkpolicy-resource)
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      name: internal
+  policyTypes:
+  - Egress
+  - Ingress
+  ingress:
+    - {}
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          name: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+
+  - to:
+    - podSelector:
+        matchLabels:
+          name: payroll
+    ports:
+    - protocol: TCP
+      port: 8080
+
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+```
+
+> Note: We have also allowed Egress traffic to TCP and UDP port. This has been added to ensure that `the internal DNS resolution` works from the internal pod. Remember: The `kube-dns service` is exposed on `port 53`:
+
+## 8. Storage
+### PV and PVC
+Once you create a PVC use it in a POD definition file by specifying the PVC Claim name under persistentVolumeClaim section in the volumes section like this:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: myfrontend
+      image: nginx
+      volumeMounts:
+      - mountPath: "/var/www/html"
+        name: mypd
+  volumes:
+    - name: mypd
+      persistentVolumeClaim:
+        claimName: myclaim
+```
+
+1. The application stores logs at location /log/app.log. View the logs.
+```bash
+root@controlplane ~ #  kubectl exec -it webapp -- cat /log/app.log
+...
+[2022-09-09 01:54:39,830] WARNING in event-simulator: USER5 Failed to Login as the account is locked due to MANY FAILED ATTEMPTS.
+```
+
+2. Configure a volume to store these logs at /var/log/webapp on the host.
+
+[Volume - hostpath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+spec:
+  containers:
+  - name: event-simulator
+    image: kodekloud/event-simulator
+    env:
+    - name: LOG_HANDLERS
+      value: file
+    volumeMounts:
+    - mountPath: /log
+      name: log-volume
+
+  volumes:
+  - name: log-volume
+    hostPath:
+      # directory location on host
+      path: /var/log/webapp
+      # this field is optional
+      type: Directory
+```
+
+3. Create a Persistent Volume with the given specification.
+
+[Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistent-volumes)
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-log
+spec:
+  persistentVolumeReclaimPolicy: Retain
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 100Mi
+  hostPath:
+    path: /pv/log
+```
+
+4. Let us claim some of that storage for our application. Create a Persistent Volume Claim with the given specification.  
+
+[PersistentVolumeClaims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims)
+
+```yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: claim-log-1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi
+```
+
+5. Update the Access Mode on the claim to bind it to the PV.
+6. You requested for `50Mi`, how much capacity is now available to the PVC?
+```bash
+# k get pvc
+NAME          STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+claim-log-1   Bound    pv-log   100Mi      RWX                           9s
+```
+
+7. Update the webapp pod to use the persistent volume claim as its storage.
+
+[Claims As Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp
+spec:
+  containers:
+  - name: event-simulator
+    image: kodekloud/event-simulator
+    env:
+    - name: LOG_HANDLERS
+      value: file
+    volumeMounts:
+    - mountPath: /log
+      name: log-volume
+
+  volumes:
+  - name: log-volume
+    persistentVolumeClaim:
+      claimName: claim-log-1
+```
+
+8. What is the `Reclaim Policy set` on the Persistent Volume pv-log?
+
+[Storages - Persistent Volumes - Reclaiming ](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#reclaiming)
+- Retain
+- Delete
+- Recycle : PV is not deleted and not available
+
+9. Try deleting the PVC and notice what happens.
+
+The PVC is stuck in `terminating` state.
+
+```bash
+# k get pvc
+NAME          STATUS        VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+claim-log-1   Terminating   pv-log   100Mi      RWX                           14m
+```
+
+10. Why is the PVC stuck in Terminating state?
+
+The PVC is being used in Pod.
+
+11. What is the state of the Persistent Volume now?
+```bash
+# k get pv
+NAME     CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS     CLAIM                 STORAGECLASS   REASON   AGE
+pv-log   100Mi      RWX            Retain           Released   default/claim-log-1  
+```
+
+### Storage Class
+1. Let's fix that. Create a new `PersistentVolumeClaim` by the name of `local-pvc` that should bind to the volume `local-pv`.
+
+```yaml
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: local-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 500Mi
+```
+
+```bash
+# k get pvc
+NAME        STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS    AGE
+local-pvc   Pending                                      local-storage   87s
+```
+
+```bash
+# k describe pvc local-pvc
+...
+Events:
+  Type    Reason                Age                  From                         Message
+  ----    ------                ----                 ----                         -------
+  Normal  WaitForFirstConsumer  5s (x16 over 3m41s)  persistentvolume-controller  waiting for first consumer to be created before binding
+```
+
+2. Create a new pod called `nginx` with the image `nginx:alpine`. The Pod should make use of the PVC `local-pvc` and mount the volume at the path `/var/www/html`.
+
+The PV `local-pv` should in a bound state.
+
+```yaml
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    volumeMounts:
+      - name: local-persistent-storage
+        mountPath: /var/www/html
+  volumes:
+    - name: local-persistent-storage
+      persistentVolumeClaim:
+        claimName: local-pvc
+```
+
+3. Create a new Storage Class called `delayed-volume-sc` that makes use of the below specs:
+
+- provisioner: kubernetes.io/no-provisioner
+- volumeBindingMode: WaitForFirstConsumer
+
+
+[Storage - Storage Classess - Local](https://kubernetes.io/docs/concepts/storage/storage-classes/#local)
+
+```yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: delayed-volume-sc
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+```
+
+## 9. Network
+### Explore Kubernetes Environment
+1. What is the network interface configured for cluster connectivity on the controlplane node?
+```bash
+root@controlplane:~# kubectl get nodes controlplane -o wide
+NAME           STATUS   ROLES                  AGE     VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+controlplane   Ready    control-plane,master   4h46m   v1.20.0   10.3.116.12   <none>        Ubuntu 18.04.5 LTS   5.4.0-1041-gcp   docker://19.3.0
+root@controlplane:~#
+```
+
+```bash
+root@controlplane ~ #  ip a | grep -B2 10.18.120.9
+4500: eth0@if4501: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    link/ether 02:42:0a:12:78:09 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.18.120.9/24 brd 10.18.120.255 scope global eth0
+```
+
+2. What is the MAC address of the interface on the controlplane node?
+```bash
+root@controlplane ~ #  ip link show eth0
+4500: eth0@if4501: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP mode DEFAULT group default 
+    link/ether 02:42:0a:12:78:09 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+```
+
+3. What is the MAC address of the interface on the node01?
+```bash
+root@controlplane ~ #  ssh node01
+root@node01 ~ # ip link show eth0
+10835: eth0@if10836: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP mode DEFAULT group default 
+    link/ether 02:42:0a:12:78:0c brd ff:ff:ff:ff:ff:ff link-netnsid 0
+```
+
+4. We use Docker as our container runtime. What is the interface/bridge created by Docker on this host? What is the state of the interface docker0?
+```bash
+# ip link
+...
+2: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN mode DEFAULT group default 
+    link/ether 02:42:bf:e8:c6:18 brd ff:ff:ff:ff:ff:ff
+```
+
+5. If you were to ping `google` from the `controlplane` node, which route does it take? What is the IP address of the Default Gateway?
+
+```bash
+root@controlplane ~ #  ip route show default
+default via 172.25.1.1 dev eth1 
+```
+
+6. What is the port the `kube-scheduler` is listening on in the `controlplane node`?
+
+```bash
+# netstat -nplt | grep scheduler
+tcp        0      0 127.0.0.1:10259         0.0.0.0:*               LISTEN      2969/kube-scheduler 
+```
+
+7. Notice that ETCD is listening on two ports. Which of these have more client connections established?
+
+```bash
+# netstat -nlpt | grep etcd
+tcp        0      0 10.18.120.9:2380        0.0.0.0:*               LISTEN      3066/etcd           
+tcp        0      0 127.0.0.1:2381          0.0.0.0:*               LISTEN      3066/etcd           
+tcp        0      0 127.0.0.1:2379          0.0.0.0:*               LISTEN      3066/etcd           
+tcp        0      0 10.18.120.9:2379        0.0.0.0:*               LISTEN      3066/etcd     
+
+# netstat -anp | grep etcd | grep 2380 | wc -l 
+1
+
+# netstat -anp | grep etcd | grep 2379 | wc -l
+70
+```
+> That's because 2379 is the port of ETCD to which all control plane components connect to. 2380 is only for etcd peer-to-peer connectivity. When you have multiple controlplane nodes. In this case we don't.
+
+### Explore CNI Weave
+1. Inspect the kubelet service and identify the network plugin configured for Kubernetes.
+
+```bash
+root@controlplane ~ # ps -aux | grep kubelet | grep network-plugin
+root        3703  0.0  0.0 4012408 107960 ?      Ssl  09:22   0:14 /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --config=/var/lib/kubelet/config.yaml --network-plugin=cni --pod-infra-container-image=k8s.gcr.io/pause:3.6
+```
+
+2. What is the path configured with all binaries of CNI supported plugins?  
+
+The CNI binaries are located under `/opt/cni/bin` by default.
+
+3. Identify which of the below plugins is not available in the list of available CNI plugins on this host?
+
+```bash
+root@controlplane ~ #  ls /opt/cni/bin/
+bandwidth  bridge  dhcp  firewall  flannel  host-device  host-local  ipvlan  loopback  macvlan  portmap  ptp  sbr  static  tuning  vlan
+
+```
+
+4. What is the CNI plugin configured to be used on this kubernetes cluster?
+
+```bash
+root@controlplane ~ #  ls /etc/cni/net.d/
+10-flannel.conflist
+```
+
+5. What binary executable file will be run by kubelet after a container and its associated namespace are created.
+
+```bash
+root@controlplane # ➜  cat /etc/cni/net.d/10-flannel.conflist | grep type
+      "type": "flannel",
+      "type": "portmap",
+```
+
+### Deploy Network Solution (optional)
+
+1. In this practice test we will install `weave-net` POD networking solution to the cluster. Let us first inspect the setup. We have deployed an application called `app` in the default namespace. What is the state of the pod?
+
+```
+Events:
+  Type     Reason                  Age                   From               Message
+  ----     ------                  ----                  ----               -------
+  Normal   Scheduled               2m35s                 default-scheduler  Successfully assigned default/app to controlplane
+  Warning  FailedCreatePodSandBox  2m30s                 kubelet            Failed to create pod sandbox: rpc error: code = Unknown desc = [failed to set up sandbox container "03ebf960214e2460cda90171006a2ee8d37d04e80b2cdbb9d56b6f02ce5b5602" network for pod "app": networkPlugin cni failed to set up pod "app_default" network: unable to allocate IP address: Post "http://127.0.0.1:6784/ip/03ebf960214e2460cda90171006a2ee8d37d04e80b2cdbb9d56b6f02ce5b5602": dial tcp 127.0.0.1:6784: connect: connection refused, failed to clean up sandbox container "03ebf960214e2460cda90171006a2ee8d37d04e80b2cdbb9d56b6f02ce5b5602" network for pod "app": networkPlugin cni failed to teardown pod "app_default" network: Delete "http://127.0.0.1:6784/ip/03ebf960214e2460cda90171006a2ee8d37d04e80b2cdbb9d56b6f02ce5b5602": dial tcp 127.0.0.1:6784: connect: connection refused]
+  Normal   SandboxChanged          11s (x12 over 2m29s)  kubelet            Pod sandbox changed, it will be killed and re-created.
+
+```
+
+2. Deploy `weave-net` networking solution to the cluster.  
+
+Replace the default IP address and subnet of `weave-net` to the `10.50.0.0/16`. Please check the official weave installation and configuration guide which is available at the top right panel.
+
+```bash
+# kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')&env.IPALLOC_RANGE=10.50.0.0/16"
+```
+
+### Networking Weave
+1. On which nodes are the weave peers present?
+
+```bash
+root@controlplane ~ # kubectl describe po weave-net-m62jj -n kube-system
+...
+Controlled By:  DaemonSet/weave-net
+```
+
+2. Identify the name of the bridge network/interface created by weave on each node
+
+```bash
+# ip link
+...
+5: weave: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1376 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether 62:5d:46:de:0e:6d brd ff:ff:ff:ff:ff:ff
+```
+
+3. What is the POD IP address range configured by weave?
+
+```bash
+root@controlplane ~ #  ip addr show weave
+5: weave: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1376 qdisc noqueue state UP group default qlen 1000
+    link/ether 62:5d:46:de:0e:6d brd ff:ff:ff:ff:ff:ff
+    inet 10.50.0.1/16 brd 10.50.255.255 scope global weave
+       valid_lft forever preferred_lft forever
+```
+
+```bash
+# kubectl logs weave-net-bbh2 weave -n kube-system
+```
+
+4. What is the default gateway configured on the PODs scheduled on node01?  
+Try scheduling a pod on node01 and check ip route output
+
+```bash
+# kubectl run busybox --image=busybox --dry-run=client -o yaml -- sleep 1000 > busybox.yaml
+# Add `nodeName: node01` into busybox.yaml
+
+spec:
+  nodeName: node01
+  containers:
+
+# kubectl create -f busybox.yaml
+# kubectl exec busybox -- ip route
+```
+
+### Service Networking 
+1. What network range are the nodes in the cluster part of?
+
+```bash
+root@controlplane ~ #  ip a | grep eth0
+32690: eth0@if32691: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    inet 10.41.236.3/24 brd 10.41.236.255 scope global eth0
+
+root@controlplane ~ #  ipcalc -b 10.41.236.3/24
+Address:   10.41.236.3          
+Netmask:   255.255.255.0 = 24   
+Wildcard:  0.0.0.255            
+=>
+Network:   10.41.236.0/24       
+HostMin:   10.41.236.1          
+HostMax:   10.41.236.254        
+Broadcast: 10.41.236.255        
+Hosts/Net: 254                   Class A, Private Internet    
+```
+
+2. What is the range of IP addresses configured for PODs on this cluster?  
+
+The network is configured with weave. Check the weave pods logs using command `kubectl logs <weave-pod-name> weave -n kube-system` and look for ipalloc-range
+
+```bash
+root@controlplane ~ #  kubectl logs weave-net-9dklq weave -n kube-system
+DEBU: 2022/09/12 12:54:30.938704 [kube-peers] Checking peer "c6:f5:a6:24:8f:21" against list &{[]}
+Peer not in list; removing persisted data
+INFO: 2022/09/12 12:54:31.142224 Command line options: map[conn-limit:200 datapath:datapath db-prefix:/weavedb/weave-net docker-api: expect-npc:true http-addr:127.0.0.1:6784 ipalloc-init:consensus=0 ipalloc-range:10.50.0.0/16 metrics-addr:0.0.0.0:6782 name:c6:f5:a6:24:8f:21 nickname:controlplane no-dns:true no-masq-local:true port:6783]
+```
+
+3. What is the IP Range configured for the services within the cluster?  
+
+Inspect the setting on kube-api server by running on command `cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep cluster-ip-range`
+
+```bash
+root@controlplane ~ #  cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep cluster-ip-range
+    - --service-cluster-ip-range=10.96.0.0/12
+```
+
+4. What type of proxy is the kube-proxy configured to use?  
+Check the logs of the kube-proxy pods. Run the command: `kubectl logs <kube-proxy-pod-name> -n kube-system`
+
+```bash
+root@controlplane ~ #  k logs kube-proxy-ct4ts -n kube-system
+...
+I0912 12:54:44.638629       1 server_others.go:561] "Unknown proxy mode, assuming iptables proxy" proxyMode=""
+I0912 12:54:44.710530       1 server_others.go:206] "Using iptables Proxier"
+...
+```
+
+5. How does this Kubernetes cluster ensure that a kube-proxy pod runs on all nodes in the cluster?
+
+### Explore DNS
+1. What is the IP of the CoreDNS server that should be configured on PODs to resolve services?
+
+```bash
+# kubectl get svc -n kube-system
+NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
+kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   21m
+```
+
+2. Where is the configuration file located for configuring the CoreDNS service?
+```bash
+root@controlplane ~ #  kubectl -n kube-system describe deploy coredns
+...
+    Args:
+      -conf
+      /etc/coredns/Corefile
+```
+
+3. How is the Corefile passed in to the CoreDNS POD?
+4. What name can be used to access the `hr` web server from the `test` Application?  
+
+You can execute a curl command on the test pod to `test`. Alternatively, the test Application also has a UI. Access it using the tab at the top of your terminal named `test-app`.
+
+5. Which of the below name can be used to access the `payroll` service from the test application?  
+`web-service.payroll`
+
+6. Which of the below name CANNOT be used to access the `payroll` service from the test application?
+
+7. We just deployed a web server - `webapp` - that accesses a database `mysql` - server. However the web server is failing to connect to the database server. Troubleshoot and fix the issue.
+
+They could be in different namespaces. First locate the applications. The web server interface can be seen by clicking the tab Web Server at the top of your terminal.
+
+```yaml
+    spec:
+      containers:
+      - env:
+        - name: DB_Host
+          value: mysql.payroll
+```
+8. From the `hr` pod `nslookup` the `mysql` service and redirect the output to a file `/root/CKA/nslookup.out`
+
+```bash
+root@controlplane ~ #  kubectl exec -it hr -- nslookup mysql.payroll > /root/CKA/nslookup.out
+```
+
+### Ingress - 1
+1. What is the `Host` configured on the `Ingress Resource`?  
+The host entry defines the domain name that users use to reach the application like `www.google.com`
+
+2. You are requested to add a new path to your ingress to make the `food delivery application available to your customers.  
+Make the new application available at `/eat`.
+
+```yaml
+spec:
+  rules:
+  - http:
+      paths:
+      ...
+      - backend:
+          service:
+            name: food-service
+            port:
+              number: 8080
+        path: /eat
+        pathType: Prefix
+```
+
+3. You are requested to make the new application available at `/pay`.  
+
+Identify and implement the best approach to making this application available on the ingress controller and test to make sure its working. Look into annotations: rewrite-target as well.
+
+```bash
+root@controlplane ~ #  k get svc -n critical-space
+NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+pay-service   ClusterIP   10.111.192.68   <none>        8282/TCP   2m27s
+```
+
+```bash
+# kubectl create ingress ingress-pay -n critical-space --rule="/pay=pay-service:8282"
+```
+
+```yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: critical-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pay
+        pathType: Prefix
+        backend:
+          service:
+           name: pay-service
+           port:
+            number: 8282
+```
+
+### Ingress - Annotations and rewrite-target
+
+```
+http://<ingress-service>:<ingress-port>/watch --> http://<watch-service>:<port>/
+
+http://<ingress-service>:<ingress-port>/wear --> http://<wear-service>:<port>/
+```
+
+### Ingress - 2
+
+1. Let us now deploy an Ingress Controller. First, create a namespace called `ingress-space`.  
+
+We will isolate all ingress related objects into its own namespace.
+
+![ingress controller](images/kubernetes-ckad-ingress-controller-1_yvsjbl.jpg)
+
+
+2. The NGINX Ingress Controller requires a ConfigMap object. Create a ConfigMap object in the `ingress-space`.  
+
+Use the spec given below. No data needs to be configured in the ConfigMap.
+
+```bash
+oot@controlplane ~ #  kubectl create configmap nginx-configuration -n ingress-space
+configmap/nginx-configuration created
+```
+
+3. The NGINX Ingress Controller requires a `ServiceAccount`. Create a ServiceAccount in the ingress-space namespace.
+
+Use the spec provided below.
+
+```bash
+root@controlplane ~ #  kubectl create sa ingress-serviceaccount -n ingress-space
+serviceaccount/ingress-serviceaccount created
+```
+
+4. Let us now deploy the Ingress Controller. Create a deployment using the file given.
+
+The Deployment configuration is given at `/root/ingress-controller.yaml`. There are several issues with it. Try to fix them.
+
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-controller
+  namespace: ingress-space
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: nginx-ingress
+  template:
+    metadata:
+      labels:
+        name: nginx-ingress
+    spec:
+      serviceAccountName: ingress-serviceaccount
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+          args:
+            - /nginx-ingress-controller
+            - --configmap=$(POD_NAMESPACE)/nginx-configuration
+            - --default-backend-service=app-space/default-http-backend
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+```
+5. Let us now create a service to make Ingress available to external users.  
+
+Create a service following the given specs.
+
+```bash
+# kubectl expose deploy ingress-controller -n ingress-space --name ingress --port=80 --target-port=80 --type=NodePort 
+# Change NodePort  
+```
+
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress
+  namespace: ingress-space
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    nodePort: 30080
+    name: http
+  - port: 443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  selector:
+    name: nginx-ingress
+```
+
+6. Create the ingress resource to make the applications available at `/wear` and `/watch` on the Ingress service.  
+
+Create the ingress in the app-space namespace.
+
+```bash
+# kubectl create ingress ingress-watch-wear -n app-space --rule="/wear=wear-service:8080" --rule="/watch=watch-service:8080"
+```
+
+```yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+  namespace: app-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /wear
+        pathType: Prefix
+        backend:
+          service:
+           name: wear-service
+           port: 
+            number: 8080
+      - path: /watch
+        pathType: Prefix
+        backend:
+          service:
+           name: video-service
+           port:
+            number: 8080
+```
+
+## 10. Design and Install a kubernetes cluster
+
+## 11. Install "Kubernetes kubeadm the way"
+### Deploy a Kubernetes Cluster using Kubeadm
+1. Install the `kubeadm` and `kubelet` packages on the controlplane and node01.  
+
+Use the exact version of `1.23.0-00` for both.  
+
+Refer to the official k8s documentation - https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+and follow the installation steps.
+
+```bash
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+br_netfilter
+EOF
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+sudo sysctl --system
+```
+
+2. Initialize `Control Plane Node` (Master Node). Use the following options:
+
+
+`apiserver-advertise-address` - Use the IP address allocated to eth0 on the controlplane node
+
+`apiserver-cert-extra-sans` - Set it to controlplane
+
+`pod-network-cidr` - Set to `10.244.0.0/16`
+Once done, set up the `default kubeconfig` file and wait for node to be part of the cluster.
+
+```bash
+root@controlplane ~ # ifconfig eth0
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1450
+        inet 10.74.51.9  netmask 255.255.255.0  broadcast 10.74.51.255
+        ether 02:42:0a:4a:33:09  txqueuelen 0  (Ethernet)
+        RX packets 4323  bytes 504068 (504.0 KB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 3687  bytes 1334966 (1.3 MB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+root@controlplane ~ # kubeadm init --apiserver-cert-extra-sans=controlplane --apiserver-advertise-address 10.74.51.9 --pod-network-cidr=10.244.0.0/16     
+
+# Once the command has been run successfully, set up the kubeconfig:
+
+root@controlplane:~# mkdir -p $HOME/.kube
+root@controlplane:~# sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+root@controlplane:~# sudo chown $(id -u):$(id -g) $HOME/.kube/config
+root@controlplane:~# 
+```
+
+3. Generate a kubeadm join token  
+Or copy the one that was generated by kubeadm init command
+
+4. Join `node01` to the cluster using the join token
+
+To create token:
+
+```bash
+root@controlplane:~# kubeadm token create --print-join-command
+kubeadm join 10.20.214.12:6443 --token ta5by8.tederwt3sm38haag --discovery-token-ca-cert-hash sha256:4a2f22716a8ebe70cb1b3f99f43c3267d35bb48f1c0b18b5d7d98c01832e9dd7
+root@controlplane:~#
+```
+
+next, run the join command on node01:
+```bash
+root@node01:~# kubeadm join 10.20.214.12:6443 --token ta5by8.tederwt3sm38haag --discovery-token-ca-cert-hash sha256:4a2f22716a8ebe70cb1b3f99f43c3267d35bb48f1c0b18b5d7d98c01832e9dd7
+[preflight] Running pre-flight checks
+[preflight] Reading configuration from the cluster...
+[preflight] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+W0323 08:27:06.794001    8938 utils.go:69] The recommended value for "resolvConf" in "KubeletConfiguration" is: /run/systemd/resolve/resolv.conf; the provided value is: /run/systemd/resolve/resolv.conf
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Starting the kubelet
+[kubelet-start] Waiting for the kubelet to perform the TLS Bootstrap...
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
+
+root@node01:~#
+```
+
+5. Install a Network Plugin. As a default, we will go with `flannel`
+
+Refer to the official documentation for the procedure.
+
+On the controlplane, run: `kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml`
+
+## 13. Troubeshooting
+### Application Failure
+1. Troubleshooting Test 1: A simple 2 tier application is deployed in the `alpha` namespace. It must display a green web page on success. Click on the `App` tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+![kubernetes-cka-troubleshooting-app-1](images/kubernetes-cka-troubleshooting-app-1.png)
+
+```bash
+controlplane ~ #  k describe po webapp-mysql-ddd686475-lwrn6 -n alpha
+...
+Containers:
+  webapp-mysql:
+    ...
+    Environment:
+      DB_Host:      mysql-service
+      DB_User:      root
+      DB_Password:  paswrd
+
+controlplane ~ #  k get svc -n alpha
+NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+mysql         ClusterIP   10.43.81.209    <none>        3306/TCP         8m56s
+web-service   NodePort    10.43.223.160   <none>        8080:30081/TCP   8m56s
+```
+
+2. Troubleshooting Test 2: The same 2 tier application is deployed in the `beta` namespace. It must display a green web page on success. Click on the `App` tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: beta
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    name: mysql
+```
+
+3. Troubleshooting Test 3: The same 2 tier application is deployed in the `gamma` namespace. It must display a green web page on success. Click on the App tab at the top of your terminal to view your application. It is currently failed or unresponsive. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: gamma
+spec:
+    ports:
+    - port: 3306
+      targetPort: 3306
+    selector:
+      name: mysql
+```
+
+4. Troubleshooting Test 4: The same 2 tier application is deployed in the `delta` namespace. It must display a green web page on success. Click on the `App` tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+![](images/kubernetes-cka-troubleshooting-app-1-2.png)
+
+```bash
+controlplane ~ #  kubectl get deploy -n delta
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+webapp-mysql   1/1     1            1 
+
+controlplane ~ # kubectl edit deploy webapp-mysql -n delta
+
+spec:
+      containers:
+      - env:
+        - name: DB_Host
+          value: mysql-service
+        - name: DB_User
+          value: root
+        - name: DB_Password
+          value: paswrd
+```
+
+5. Troubleshooting Test 5: The same 2 tier application is deployed in the `epsilon` namespace. It must display a green web page on success. Click on the App tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+
+```bash
+root@controlplane:~# kubectl -n epsilon describe pod mysql  | grep MYSQL_ROOT_PASSWORD 
+      MYSQL_ROOT_PASSWORD:  passwooooorrddd
+root@controlplane:~#
+```
+
+6. Troubleshooting Test 6: The same 2 tier application is deployed in the `zeta` namespace. It must display a green web page on success. Click on the App tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+
+```bash
+root@controlplane:~# kubectl -n zeta get svc web-service 
+NAME          TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+web-service   NodePort   10.102.190.212   <none>        8080:30088/TCP   3m1s
+root@controlplane:~#
+```
+
+```bash
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: zeta
+spec:
+  ports:
+  - nodePort: 30081
+    port: 8080
+    targetPort: 8080
+  selector:
+    name: webapp-mysql
+  type: NodePort
+```
+
+### Control Plane Failure
+1. The cluster is broken. We tried deploying an application but it's not working. Troubleshoot and fix the issue.
+
+Start looking at the deployments.
+
+Run the command: `kubectl get pods -n kube-system`. Check the `kube-scheduler` manifest file and fix the issue.
+The command run by the scheduler pod is incorrect. Here is a snippet of the YAML file.
+
+```bash
+root@controlplane ~ #  k get po -n kube-system
+NAME                                   READY   STATUS             RESTARTS   AGE
+...
+kube-scheduler-controlplane            0/1     CrashLoopBackOff   4          2m31s
+
+root@controlplane ~ #  vi /etc/kubernetes/manifests/kube-scheduler.yaml
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+    - --authentication-kubeconfig=/etc/kubernetes/scheduler.conf
+    - --authorization-kubeconfig=/etc/kubernetes/scheduler.conf
+    - --bind-address=127.0.0.1
+    - --kubeconfig=/etc/kubernetes/scheduler.conf
+    - --leader-elect=true
+    - --port=0
+```
+
+2. Scale the deployment app to 2 pods.
+```bash
+root@controlplane ~ #  k get deploy 
+NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+app    1/1     1            1           20m
+
+root@controlplane ~ #  k edit deploy app
+
+spec:
+  replicas: 2
+
+
+# kubectl scale deploy app --replicas=2  
+```
+
+3. Even though the deployment was scaled to 2, the number of PODs does not seem to increase. Investigate and fix the issue.
+
+Inspect the component responsible for managing `deployments` and `replicasets`.
+
+```bash
+root@controlplane ~ #  k get po -n kube-system
+NAME                                   READY   STATUS             RESTARTS   AGE
+...
+kube-controller-manager-controlplane   0/1     CrashLoopBackOff   6          7m26s
+
+root@controlplane ~ #  k logs kube-controller-manager-controlplane -n kube-system
+Flag --port has been deprecated, see --secure-port instead.
+I0913 02:52:10.558591       1 serving.go:331] Generated self-signed cert in-memory
+stat /etc/kubernetes/controller-manager-XXXX.conf: no such file or directory
+
+root@controlplane ~ #  vi /etc/kubernetes/manifests/kube-controller-manager.yaml
+spec:
+  containers:
+  - command:
+    - kube-controller-manager
+    ...
+    - --kubeconfig=/etc/kubernetes/controller-manager.conf
+```
+
+4. Something is wrong with scaling again. We just tried scaling the deployment to 3 replicas. But it's not happening.
+
+Investigate and fix the issue.
+
+```bash
+root@controlplane ~ #  k get po -n kube-system
+NAME                                   READY   STATUS             RESTARTS   AGE
+...
+kube-controller-manager-controlplane   0/1     CrashLoopBackOff   4          2m9s
+
+root@controlplane ~ #  k logs kube-controller-manager-controlplane -n kube-system
+Flag --port has been deprecated, see --secure-port instead.
+I0913 03:00:58.178967       1 serving.go:331] Generated self-signed cert in-memory
+unable to load client CA file "/etc/kubernetes/pki/ca.crt": open /etc/kubernetes/pki/ca.crt: no such file or directory
+
+root@controlplane ~ #  vi /etc/kubernetes/manifests/kube-controller-manager.yaml
+...
+    - mountPath: /etc/kubernetes/pki
+      name: k8s-certs
+      readOnly: true
+  ...    
+  - hostPath:
+      path: /etc/kubernetes/pki
+      type: DirectoryOrCreate
+    name: k8s-certs
+```
+
+### Worker Node Failure
+1. Fix the broken cluster
+
+```bash
+root@controlplane ~ #  k get no
+NAME           STATUS     ROLES                  AGE     VERSION
+controlplane   Ready      control-plane,master   6m52s   v1.23.0
+node01         NotReady   <none>                 6m18s   v1.23.0
+
+root@controlplane ~ #  k describe no node01
+Conditions:
+  Type                 Status    LastHeartbeatTime                 LastTransitionTime                Reason              Message
+  ----                 ------    -----------------                 ------------------                ------              -------
+  NetworkUnavailable   False     Tue, 13 Sep 2022 03:46:26 +0000   Tue, 13 Sep 2022 03:46:26 +0000   FlannelIsUp         Flannel is running on this node
+  MemoryPressure       Unknown   Tue, 13 Sep 2022 03:46:30 +0000   Tue, 13 Sep 2022 03:52:08 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  DiskPressure         Unknown   Tue, 13 Sep 2022 03:46:30 +0000   Tue, 13 Sep 2022 03:52:08 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  PIDPressure          Unknown   Tue, 13 Sep 2022 03:46:30 +0000   Tue, 13 Sep 2022 03:52:08 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  Ready                Unknown   Tue, 13 Sep 2022 03:46:30 +0000   Tue, 13 Sep 2022 03:52:08 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+
+root@controlplane ~ #  ssh node01  
+
+root@node01 ~ #  systemctl status kubelet
+● kubelet.service - kubelet: The Kubernetes Node Agent
+   Loaded: loaded (/lib/systemd/system/kubelet.service; enabled; vendor preset: enabled)
+  Drop-In: /etc/systemd/system/kubelet.service.d
+           └─10-kubeadm.conf
+   Active: inactive (dead) since Tue 2022-09-13 03:51:26 UTC; 4min 16s ago
+     Docs: https://kubernetes.io/docs/home/
+  Process: 1511 ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS (code=exite
+ Main PID: 1511 (code=exited, status=0/SUCCESS)
+```
+
+2. The cluster is broken again. Investigate and fix the issue.
+
+```bash
+root@node01:~# journalctl -u kubelet 
+.
+.
+Jul 25 07:54:50 node01 kubelet[5681]: F0725 07:54:50.831238    5681 server.go:257] unable to load client CA file /etc/kubernetes/pki/WRONG-CA-FILE.crt: open /etc/kubernetes/pki/WRONG-CA-FILE.crt: no such file or directory
+Jul 25 07:55:01 node01 kubelet[5710]: F0725 07:55:01.339531    5710 server.go:257]
+.
+.
+```
+
+There appears to be a mistake path used for the CA certificate in the kubelet configuration. This can be corrected by updating the file `/var/lib/kubelet/config.yaml`.
+Once this is fixed, restart the kubelet service, (like we did in the previous question) and node01 should return back to a working state.
+
+```bash
+root@node01 ~ #  vi /var/lib/kubelet/config.yaml
+...
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+```
+
+3. The cluster is broken again. Investigate and fix the issue.
+```bash
+root@node01:~# journalctl -u kubelet 
+.
+.
+Jul 25 08:05:26 node01 kubelet[7966]: E0725 08:05:26.426155    7966 reflector.go:138] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:46: Failed to watch *v1.Pod: failed to list *v1.Pod: Get "https://controlplane:6553/api/v1/pods?fieldSelector=spec.nodeName%3Dnode01&limit=500&resourceVersion=0": dial tcp 10.1.126.9:6553: connect: connection refused
+.
+.
+```
+
+As we can clearly see, kubelet is trying to connect to the API server on the controlplane node on port 6553. This is incorrect.
+To fix, correct the port on the kubeconfig file used by the kubelet.
+
+```bash
+# /etc/kubernetes/kubelet.conf
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data:
+    --REDACTED---
+    server: https://controlplane:6443
+```
+
+### Network Troubleshooting
+1. **Troubleshooting Test 1:** A simple 2 tier application is deployed in the `triton` namespace. It must display a green web page on success. Click on the app tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+![network-troubleshooting](images/network-troubleshooting.PNG)
+
+```bash
+root@controlplane:/# kubectl get po -n triton
+NAME                            READY   STATUS              RESTARTS   AGE
+mysql                           0/1     ContainerCreating   0          29m
+webapp-mysql-54db464f4f-lk7vn   0/1     ContainerCreating   0          29m
+
+root@controlplane:/# kubectl describe po webapp-mysql-54db464f4f-lk7vn -n triton
+Events:
+  Type     Reason                  Age                 From               Message
+  ----     ------                  ----                ----               -------
+  Normal   Scheduled               30m                 default-scheduler  Successfully assigned triton/webapp-mysql-54db464f4f-lk7vn to controlplane
+  Warning  FailedCreatePodSandBox  30m                 kubelet            Failed to create pod sandbox: rpc error: code = Unknown desc = [failed to set up sandbox container "fbfcbf01d9ddace81589bdd0dc9ac9590b0b332e5438cbaf67d20997faa04822" network for pod "webapp-mysql-54db464f4f-lk7vn": networkPlugin cni failed to set up pod "webapp-mysql-54db464f4f-lk7vn_triton" network: unable to allocate IP address: Post "http://127.0.0.1:6784/ip/fbfcbf01d9ddace81589bdd0dc9ac9590b0b332e5438cbaf67d20997faa04822": dial tcp 127.0.0.1:6784: connect: connection refused, failed to clean up sandbox container "fbfcbf01d9ddace81589bdd0dc9ac9590b0b332e5438cbaf67d20997faa04822" network for pod "webapp-mysql-54db464f4f-lk7vn": networkPlugin cni failed to teardown pod "webapp-mysql-54db464f4f-lk7vn_triton" network: Delete "http://127.0.0.1:6784/ip/fbfcbf01d9ddace81589bdd0dc9ac9590b0b332e5438cbaf67d20997faa04822": dial tcp 127.0.0.1:6784: connect: connection refused]
+  Normal   SandboxChanged          5s (x138 over 30m)  kubelet            Pod sandbox changed, it will be killed and re-created.
+```
+Do the services in `triton` namespace have a valid endpoint? If they do, check the `kube-proxy` and the `weave` logs.
+Does the cluster have a `Network Addon` installed?
+
+Install Weave using the link: `https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network`
+
+For example: `kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"`
+
+```bash
+root@controlplane:/# kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+serviceaccount/weave-net created
+clusterrole.rbac.authorization.k8s.io/weave-net created
+clusterrolebinding.rbac.authorization.k8s.io/weave-net created
+role.rbac.authorization.k8s.io/weave-net created
+rolebinding.rbac.authorization.k8s.io/weave-net created
+```
+
+2. **Troubleshooting Test 2:** The same 2 tier application is having issues again. It must display a green web page on success. Click on the app tab at the top of your terminal to view your application. It is currently failed. Troubleshoot and fix the issue.
+
+Stick to the given architecture. Use the same names and port numbers as given in the below architecture diagram. Feel free to edit, delete or recreate objects as necessary.
+
+There seems to be an issue with the `Service Proxy`. Inspect and Fix the `kube-proxy` daemonset.
+Check logs of the kube-proxy pod. It appears that the daemonset is using a wrong configuration file.
+Compare the configuration file used in the daemonset with the configmap for kube-proxy.
+Edit the kube-proxy daemonset to correct the configuration file using `kubectl -n kube-system edit ds kube-proxy`.
+
+```bash
+root@controlplane:/# kubectl get po -n kube-system
+NAME                                   READY   STATUS             RESTARTS   AGE
+kube-proxy-qk2ls                       0/1     CrashLoopBackOff   6          9m37s
+
+root@controlplane:/# kubectl logs kube-proxy-qk2ls -n kube-system
+F0913 05:25:20.203769       1 server.go:490] failed complete: open /var/lib/kube-proxy/configuration.conf: no such file or directory
+```
+
+
+Correct this path to /var/lib/kube-proxy/config.conf as per the ConfigMap and recreate the kube-proxy pods.
+
+Here is the snippet of the command to be run by the kube-proxy pods:
+```bash
+root@controlplane:/# kubectl -n kube-system edit ds kube-proxy
+
+    spec:
+      containers:
+      - command:
+        - /usr/local/bin/kube-proxy
+        - --config=/var/lib/kube-proxy/config.conf
+        - --hostname-override=$(NODE_NAME)
+```
+
+## 14. Other Topics
+### JSON Path
+In the upcoming lecture we will explore some advanced commands with kubectl utility. But that requires JSON PATH. If you are new to JSON PATH queries get introduced to it first by going through the lectures and practice tests available here.
+
+https://kodekloud.com/p/json-path-quiz  
+
+Once you are comfortable head back here:  
+I also have some JSON PATH exercises with Kubernetes Data Objects. Make sure you go through these:  
+
+https://mmumshad.github.io/json-path-quiz/index.html#!/?questions=questionskub1  
+https://mmumshad.github.io/json-path-quiz/index.html#!/?questions=questionskub2
+
+## 15. Lightning Labs
+1. Upgrade the current version of kubernetes from 1.19 to `1.20.0` exactly using the `kubeadm` utility. Make sure that the upgrade is carried out one node at a time starting with the master node. To minimize downtime, the deployment `gold-nginx` should be rescheduled on an alternate node before upgrading each node.
+
+Upgrade `controlplane` node first and drain node node01 before upgrading it. Pods for `gold-nginx` should run on the `controlplane` node subsequently.
+
+
+2. Print the names of all deployments in the `admin2406` namespace in the following format:
+DEPLOYMENT CONTAINER_IMAGE READY_REPLICAS NAMESPACE
+<deployment name> <container image used> <ready replica count> <Namespace>
+. The data should be sorted by the increasing order of the deployment name.
+
+Example:
+DEPLOYMENT CONTAINER_IMAGE READY_REPLICAS NAMESPACE
+deploy0 nginx:alpine 1 admin2406
+Write the result to the file `/opt/admin2406_data`.
+
+
+```bash
+kubectl get deploy -n admin2406 -o=jsonpath="{range .items[*]}{.metadata.name}{'\t'}{.spec.template.spec.containers[0].image}{'\t'}{.status.readyReplicas}{'\t'}{.metadata.namespace}{'\n'}{end}"
+
+root@controlplane:~# kubectl get deploy -n admin2406 -o=custom-columns=DEPLOYMENT:.metadata.name,CONTAINER_IMAGE:.spec.template.spec.containers[0].image,READY_REPLICAS:{.status.readyReplicas},NAMESPACE:{.metadata.namespace} > /opt/admin2406_data
+root@controlplane:~# cat /opt/admin2406_data 
+DEPLOYMENT   CONTAINER_IMAGE   READY_REPLICAS   NAMESPACE
+deploy1      nginx             1                admin2406
+deploy2      nginx:alpine      1                admin2406
+deploy3      nginx:1.16        1                admin2406
+deploy4      nginx:1.17        1                admin2406
+deploy5      nginx:latest      1                admin2406
+root@controlplane:~# 
+```
+
+3. A kubeconfig file called `admin.kubeconfig` has been created in `/root/CKA`. There is something wrong with the configuration. Troubleshoot and fix it.
+
+[Kubernetes Documentation | Tasks | Access Applications in a Cluster | Configure Access to Multiple Clusters](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/#define-clusters-users-and-contexts)
+
+```bash
+root@controlplane:~# kubectl config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://controlplane:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+```
+
+```bash
+root@controlplane:~# cat CKA/admin.kubeconfig 
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMrZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRY...
+    server: https://controlplane:4380
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFekNDQWZ1Z0F3SUJBZ0lJWXZLVjJlQUl6a3d3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1...
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBeXBqUEhiWWovRU5SOFMwbEZKZ3VwaUVSaHFYQzBQdC96RTdZQlRQdVFDZjNOVVc5CmZaUzlKcE92...
+root@controlplane:~
+```
+
+```bash
+kubectl config --kubeconfig=/root/CKA/admin.kubeconfig view
+kubectl config --kubeconfig=/root/CKA/admin.kubeconfig use-context kubernetes-admin@kubernetes
+```
+
+4. In `default` namespace create a new deployment called `nginx-deploy`, with image `nginx:1.16` and `1 replica`. Next upgrade the deployment to version `1.17` using rolling update.
+
+- Image: nginx:1.16
+- Task: Upgrade the version of the deployment to 1:17
+
+```bash
+# kubectl create deployment nginx-deploy --image=nginx:1.16 --replicas=1
+
+# kubectl edit deploy nginx-deploy
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nginx-deploy
+    spec:
+      containers:
+      - image: nginx:1.17
+        imagePullPolicy: IfNotPresent
+        name: nginx
+```
+
+
+5. A new deployment called `alpha-mysql` has been deployed in the `alpha` namespace. However, the pods are not running. Troubleshoot and fix the issue. The deployment should make use of the persistent volume `alpha-pv` to be mounted at `/var/lib/mysql` and should use the environment variable `MYSQL_ALLOW_EMPTY_PASSWORD=1` to make use of an empty root password.
+
+Important: Do not alter the persistent volume.
+
+```bash
+root@controlplane:~# k describe po alpha-mysql-6cc9f6bb7c-slmxk -n alpha
+...
+  Type     Reason            Age                  From               Message
+  ----     ------            ----                 ----               -------
+  Warning  FailedScheduling  10s (x4 over 2m28s)  default-scheduler  persistentvolumeclaim "mysql-alpha-pvc" not found
+
+root@controlplane:~# k get pvc -n alpha
+NAME          STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+alpha-claim   Pending                                      slow-storage   3m35s
+
+root@controlplane:~# k get pv -n alpha
+NAME       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+alpha-pv   1Gi        RWO            Retain           Available           slow                    3m57s
+
+root@controlplane:~# k edit deploy alpha-mysql -n alpha
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: alpha-claim
+
+root@controlplane:~# k edit pvc alpha-claim -n alpha
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: slow
+  volumeMode: Filesystem          
+```
+
+6. Take the backup of ETCD at the location `/opt/etcd-backup.db` on the controlplane node.
+
+```bash
+root@controlplane:~# ETCDCTL_API=3 etcdctl --endpoints=https://[127.0.0.1]:2379 \
+--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+--cert=/etc/kubernetes/pki/etcd/server.crt \
+--key=/etc/kubernetes/pki/etcd/server.key \
+snapshot save /opt/etcd-backup.db
+```
+
+7. Create a pod called `secret-1401` in the `admin1401` namespace using the `busybox` image. The container within the pod should be called `secret-admin` and should `sleep for 4800 seconds.`
+
+The container should mount a `read-only` secret volume called `secret-volume` at the path `/etc/secret-volume`. The secret being mounted has already been created for you and is called `dotfile-secret`.
+
+```bash
+root@controlplane:~# k run secret-1401 --image=busybox -n admin1401
+root@controlplane:~# k edit po secret-1401 -n admin1401 
+spec:
+  containers:
+  - image: busybox
+    command: ["sleep"]
+    args: ["4800"]
+```
+
+```bash
+    image: busybox
+    imagePullPolicy: Always
+    name: secret-admin
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: default-token-sb5xq
+      readOnly: true
+    - mountPath: /etc/secret-volume
+      name: secret-volume
+      readOnly: true
+
+  volumes:
+  - name: default-token-sb5xq
+    secret:
+      defaultMode: 420
+      secretName: default-token-sb5xq
+  - name: secret-volume
+    secret:
+      secretName: dotfile-secret   
+```
+
+
+## 16. Mock Exams
+### Mock Exam 1
+1. Deploy a pod named `nginx-pod` using the `nginx:alpine` image.
+
+Once done, click on the Next Question button in the top right corner of this panel. You may navigate back and forth freely between all questions. Once done with all questions, click on End Exam. Your work will be validated at the end and score shown. Good Luck!
+
+```bash
+kubectl run nginx-pod --image=nginx:alpine
+```
+
+2. Deploy a `messaging` pod using the `redis:alpine` image with the labels set to `tier=msg`.
+
+- Pod Name: messaging
+- Image: redis:alpine
+- Labels: tier=msg
+
+```bash
+# kubectl run messaging --image=redis:alpine --labels="tier=msg"
+```
+
+3. Create a namespace named apx-x9984574.
+
+- Namespace: apx-x9984574
+
+4. Get the list of nodes in JSON format and store it in a file at `/opt/outputs/nodes-z3444kd9.json`.
+
+- [jsonpath](https://kubernetes.io/docs/reference/kubectl/jsonpath/)
+
+```bash
+# kubectl get nodes -o json > /opt/outputs/nodes-z3444kd9.json
+
+root@controlplane ~ #  kubectl get nodes -o=jsonpath="{.items[*].metadata.name}" > /opt/outputs/nodes-z3444kd9.json
+root@controlplane ~ #  cat /opt/outputs/nodes-z3444kd9.json
+controlplane
+```
+
+5. Create a service `messaging-service` to expose the messaging application within the cluster on port `6379`.
+
+- Use imperative commands.
+- [Service](https://kubernetes.io/docs/concepts/services-networking/service/)
+- [Managing Kubernetes Objects Using Imperative Commands](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/imperative-command/)
+
+```bash
+# root@controlplane ~ ➜  kubectl expose pod messaging --port=6379 --target-port=6379 --name=messaging-service
+service/messaging-service exposed
+
+# Create a new ClusterIP service named my-cs
+kubectl create service clusterip messaging-service --tcp=6379:6379
+```
+
+```bash
+apiVersion: v1
+kind: Service
+metadata:
+  name: messaging-service
+spec:
+  selector:
+    app.kubernetes.io/name: messaging
+  ports:
+  - protocol: TCP
+    port: 6379
+    targetPort: 6379
+```
+
+6. Create a deployment named `hr-web-app` using the image `kodekloud/webapp-color` with `2` replicas.
+
+- Name: hr-web-app
+- Image: kodekloud/webapp-color
+- Replicas: 2
+
+```bash
+# kubectl create deployment hr-web-app --image=kodekloud/webapp-color --replicas=2
+```
+
+7. Create a static pod named `static-busybox` on the `controlplane` node that uses the `busybox` image and the command `sleep 1000`.
+
+- Name: static-busybox
+- Image: busybox
+- [Static Pods](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/)
+
+```bash
+kubectl run static-busybox --image busybox --dry-run=client -o yaml -- sleep 1000
+```
+
+```bash
+# Run this command on the node where kubelet is running
+mkdir -p /etc/kubernetes/manifests/
+cat <<EOF >/etc/kubernetes/manifests/static-busybox.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: static-busybox
+spec:
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["sleep"]
+      args: ["1000"]
+EOF
+```
+
+8. Create a POD in the `finance` namespace named `temp-bus` with the image `redis:alpine`.
+
+- Name: temp-bus
+- Image Name: redis:alpine
+
+```bash
+kubectl run temp-bus --image=redis:alpine -n finance
+```
+
+9. A new application `orange` is deployed. There is something wrong with it. Identify and fix the issue.
+
+- Issue fixed
+
+```bash
+root@controlplane ~ # describe po orange
+Init Containers:
+  init-myservice:
+    Container ID:  docker://88d8eb4ae372c8f3f3f4364e0aaf33e0ed9a019fe9123738e9f7667241ebe7bb
+    Image:         busybox
+    ...
+    Command:
+      sh
+      -c
+      sleeeep 2;
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+    ...
+  orange-container:
+    Container ID:  
+    Image:         busybox:1.28
+    Image ID:      
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      echo The app is running! && sleep 3600
+    State:          Waiting
+      Reason:       PodInitializing
+    Ready:          False
+    Restart Count:  0
+
+root@controlplane ~ #  k logs orange init-myservice
+sh: sleeeep: not found 
+```
+
+10. Expose the `hr-web-app` as service `hr-web-app-service` application on port `30082` on the nodes on the cluster.
+
+The web application listens on port 8080.
+
+- Name: hr-web-app-service
+- Type: NodePort
+- Endpoints: 2
+- Port: 8080
+- NodePort: 30082
+
+```bash
+kubectl expose deploy hr-web-app --type=NodePort --port=8080 --name=hr-web-app-service
+```
+
+```bash
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2022-09-14T03:42:14Z"
+  labels:
+    app: hr-web-app
+  name: hr-web-app-service
+  namespace: default
+  resourceVersion: "5206"
+  uid: baa28fa9-45c1-485b-9e1a-94438aabdf59
+spec:
+  clusterIP: 10.109.129.205
+  clusterIPs:
+  - 10.109.129.205
+  externalTrafficPolicy: Cluster
+  ports:
+  - nodePort: 30082
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: hr-web-app
+  sessionAffinity: None
+  type: NodePort
+status:
+  loadBalancer: {}
+```
+
+11. Use JSON PATH query to retrieve the `osImages` of all the nodes and store it in a file `/opt/outputs/nodes_os_x43kj56.txt`.
+
+The `osImages` are under the `nodeInfo` section under `status` of each node.
+
+Task Completed
+
+```bash
+root@controlplane ~ ➜  kubectl get nodes -o=jsonpath="{.items[*].status.nodeInfo.osImage}" > /opt/outputs/nodes_os_x43kj56.txt
+```
+
+12. Create a Persistent Volume with the given specification.
+
+- Volume Name: pv-analytics
+- Storage: 100Mi
+- Access modes: ReadWriteMany
+- Host Path: /pv/data-analytics
+
+```bash
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-analytics
+spec:
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/pv/data-analytics"
+```
+
+
+### Mock Exam 2
+1. Take a backup of the `etcd` cluster and save it to `/opt/etcd-backup.db`.
+
+```bash
+ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \
+  snapshot save /opt/etcd-backup.db
+```
+
+2. Create a Pod called `redis-storage` with image: `redis:alpine` with a Volume of type `emptyDir` that lasts for the life of the Pod.
+
+Specs on the below.
+
+- Pod named 'redis-storage' created
+- Pod 'redis-storage' uses Volume type of emptyDir
+- Pod 'redis-storage' uses volumeMount with mountPath = /data/redis
+
+```bash
+cat <<EOF >redis-storage.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-storage
+spec:
+  containers:
+  - image: redis:alpine
+    name: redis-storage
+    volumeMounts:
+    - mountPath: /data/redis
+      name: cache-volume
+  volumes:
+  - name: cache-volume
+    emptyDir: {}
+EOF
+```
+
+3. Create a new pod called `super-user-pod` with image `busybox:1.28`. Allow the pod to be able to set `system_time`.
+
+The container should sleep for `4800` seconds.
+
+- Pod: super-user-pod
+- Container Image: busybox:1.28
+- SYS_TIME capabilities for the conatiner?
+- [Set capabilities for a Container](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container)
+
+```bash
+kubectl run super-user-pod --image=busybox:1.28 -- sleep 4800
+
+
+spec:
+  containers:
+  - args:
+    - sleep
+    - "4800"
+    image: busybox:1.28
+    securityContext:
+      capabilities:
+        add: ["SYS_TIME"]
+```
+
+4. A pod definition file is created at `/root/CKA/use-pv.yaml`. Make use of this manifest file and mount the persistent volume called `pv-1`. Ensure the pod is running and the PV is bound.
+
+- mountPath: /data
+- persistentVolumeClaim Name: my-pvc
+- persistentVolume Claim configured correctly
+- pod using the correct mountPath
+- pod using the persistent volume claim?
+
+
+```bash
+root@controlplane ~ #  k get pv
+NAME   CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv-1   10Mi       RWO            Retain           Available                                   3m46s
+```
+
+```bash
+root@controlplane ~ # cat <<EOF >my-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+EOF      
+
+root@controlplane ~ #  k get pv
+NAME   CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM            STORAGECLASS   REASON   AGE
+pv-1   10Mi       RWO            Retain           Bound    default/my-pvc                           7m55s
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: use-pv
+  name: use-pv
+spec:
+  containers:
+  - image: nginx
+    name: use-pv
+    volumeMounts:
+      - mountPath: "/data"
+        name: my-pv   
+  volumes:
+    - name: my-pv
+      persistentVolumeClaim:
+        claimName: my-pvc
+```
+
+5. Create a new deployment called `nginx-deploy`, with image `nginx:1.16` and `1` replica. Next upgrade the deployment to version `1.17` using rolling update.
+
+- Deployment : nginx-deploy. Image: nginx:1.16
+- Image: nginx:1.16
+- Task: Upgrade the version of the deployment to 1:17
+- Task: Record the changes for the image upgrade
+
+```bash
+kubectl create deploy nginx-deploy --image=nginx:1.16 --replicas=1
+kubectl set image deployment/nginx-deploy nginx=nginx:1.17
+```
+
+6. Create a new user called `john`. Grant him access to the cluster. John should have permission to `create, list, get, update and delete pods` in the development namespace . The private key exists in the location: `/root/CKA/john.key` and csr at `/root/CKA/john.csr`.
+
+Important Note: As of kubernetes 1.19, the CertificateSigningRequest object expects a signerName.
+
+Please refer the documentation to see an example. The documentation tab is available at the top right of terminal.
+- [Create CertificateSigningRequest](https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/#create-certificatesigningrequest)
+
+- CSR: john-developer; Status: Approved
+- Role Name: developer; namespace: development; Resource: Pods
+- Access: User 'john' has appropriate permissions
+
+
+```bash
+
+openssl genrsa -out myuser.key 2048
+openssl req -new -key myuser.key -out myuser.csr
+cat myuser.csr | base64 | tr -d "\n"
+
+Solution manifest file to create a CSR as follows:
+
+---
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: john-developer
+spec:
+  signerName: kubernetes.io/kube-apiserver-client
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ1ZEQ0NBVHdDQVFBd0R6RU5NQXNHQTFVRUF3d0VhbTlvYmpDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRApnZ0VQQURDQ0FRb0NnZ0VCQU12V0FlNUNTTyt1bW81SWI4bUdFM2JJY3VJNlloZGRiZDBzVDJJdlpiNnpkSkhGCmJnbVhIS3lOTFZ1VCs2YTRmZ3lzenB0TDBqcWlvZE1LYzZ0eUUyeDY2K1VnNXJCRVRGU2xGWmJ4NGZhbzI2S1MKd3dPM3N6am4ybHU3UkJwOEFXOUxJczY0Wi9SQ29BR3dNSEo0dk1xS2V2NUVzSDhsQjBxU1BaM29LQm96TnJndwpRTTA2ZjlIM21Tem5DMnhUa3ZzVnVkMEZGb0M0TzljQy9jZUEyOGVCWWR0WVMzcVhzTFV4R1lpcUEwOUpjOTF0ClF4WS82RER6R0VyM2VyUE5MTC9EbTRLRWN3NjdDbG5UT2ZTMWVCeDB0eFVQV3pnSTVhWkhya0xvRGlqOG9wZGQKbWdtL0NnZ2hsYlZJcnpDUmFsaTJQUG5hRUZwWldua0ZDRE5LMjhVQ0F3RUFBYUFBTUEwR0NTcUdTSWIzRFFFQgpDd1VBQTRJQkFRQ294cjF2WDRVRGRXZVRtbWpibkY3Q0xkZmQvNDRlNEhqcWV5ZkJWdWdpU1lrRC8rR3g3OStCClkwRVJMblY1VkF3c2hjK2FHdDFxYWpWaEx6eTQvN0oxVDlXenN1OGtuMnJaNUM0WHZkWktsUGlTSGl0MXlHMEoKbENRY0RYbFFCYmJrZDhCUks0S09WRGZlSG56MWNUOXl3ZDNEQkE5TE1RMzl0cjFGVkZ4dmFSWHFMOGZsLy8xUApGSllRU0UvWnFRMDY1cVR4c1VtVCtJYVkxOGJKdXFGR0hNN1FFTS85TS96UExIejY5YU9ZdCtBOXFTUkorMWs3CjIvOVpTWVRJcmM5a3gyQTZBSjBQV2lpQTJoQVRCLzlCZXFZSml0NWh0V0U4MWZzVWlHK2pqNjdiOW11Z1pkZkoKWnBIajJ3bFBZVWxiLytmdytXdWZIK2VGenZNMWNudnAKLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==
+  usages:
+  - client auth
+  - digital signature
+  - key encipherment
+
+
+To approve this certificate, run: `kubectl certificate approve john-developer`
+
+Next, create a role developer and rolebinding developer-role-binding, run the command:
+
+$ kubectl create role developer --resource=pods --verb=create,list,get,update,delete --namespace=development
+
+$ kubectl create rolebinding developer-role-binding --role=developer --user=john --namespace=development
+
+To verify the permission from kubectl utility tool:
+
+$ kubectl auth can-i update pods --as=john --namespace=development
+
+```
+
+
+7. Create a nginx pod called `nginx-resolve`r using image `nginx`, expose it internally with a service called `nginx-resolver-service`.
+
+Test that you are able to look up the service and pod names from within the cluster. Use the image `busybox:1.28 `to create a pod for dns lookup. Record results in `/root/CKA/nginx.svc` and `/root/CKA/nginx.pod` for service and pod name resolutions respectively
+
+- Pod: nginx-resolver created
+- Service DNS Resolution recorded correctly
+- Pod DNS resolution recorded correctly
+
+```bash
+Use the command kubectl run and create a nginx pod and busybox pod. Resolve it, nginx service and its pod name from busybox pod.
+
+To create a pod nginx-resolver and expose it internally:
+
+kubectl run nginx-resolver --image=nginx
+kubectl expose pod nginx-resolver --name=nginx-resolver-service --port=80 --target-port=80 --type=ClusterIP
+
+To create a pod test-nslookup. Test that you are able to look up the service and pod names from within the cluster:
+
+kubectl run test-nslookup --image=busybox:1.28 --rm -it --restart=Never -- nslookup nginx-resolver-service
+kubectl run test-nslookup --image=busybox:1.28 --rm -it --restart=Never -- nslookup nginx-resolver-service > /root/CKA/nginx.svc
+
+
+Get the IP of the nginx-resolver pod and replace the dots(.) with hyphon(-) which will be used below.
+
+kubectl get pod nginx-resolver -o wide
+kubectl run test-nslookup --image=busybox:1.28 --rm -it --restart=Never -- nslookup <P-O-D-I-P.default.pod> > /root/CKA/nginx.pod
+```
+
+8. Create a static pod on node01 called `nginx-critical` with image `nginx` and make sure that it is recreated/restarted automatically in case of a failure.
+
+Use `/etc/kubernetes/manifests` as the Static Pod path for example.
+
+- static pod configured under /etc/kubernetes/manifests ?
+- Pod nginx-critical-node01 is up and running
+
+```bash
+To create a static pod called nginx-critical by using below command:
+
+kubectl run nginx-critical-node01 --image=nginx --dry-run=client -o yaml > static.yaml
+
+Copy the contents of this file or use scp command to transfer this file from controlplane to node01 node.
+
+root@controlplane:~# scp static.yaml node01:/root/
+
+To know the IP Address of the node01 node:
+
+root@controlplane:~# kubectl get nodes -o wide
+
+# Perform SSH
+root@controlplane:~# ssh node01
+OR
+root@controlplane:~# ssh <IP of node01>
+On node01 node:
+Check if static pod directory is present which is /etc/kubernetes/manifests, if it's not present then create it.
+
+root@node01:~# mkdir -p /etc/kubernetes/manifests
+
+Add that complete path to the staticPodPath field in the kubelet config.yaml file.
+root@node01:~# vi /var/lib/kubelet/config.yaml
+
+...
+staticPodPath: /etc/kubernetes/manifests
+
+now, move/copy the static.yaml to path /etc/kubernetes/manifests/.
+root@node01:~# cp /root/static.yaml /etc/kubernetes/manifests/
+
+Go back to the controlplane node and check the status of static pod:
+
+root@node01:~# exit
+logout
+root@controlplane:~# kubectl get pods 
+```
+
+### Mock Exam 3
+1. Create a new service account with the name `pvviewer`. Grant this Service account access to `list` all PersistentVolumes in the cluster by creating an appropriate cluster role called `pvviewer-role` and ClusterRoleBinding called `pvviewer-role-binding`.
+Next, create a pod called `pvviewer` with the image: `redis` and serviceAccount: `pvviewer `in the default namespace.
+
+- ServiceAccount: pvviewer
+- ClusterRole: pvviewer-role
+- ClusterRoleBinding: pvviewer-role-binding
+- Pod: pvviewer
+
+- [kubectl create clusterrolebinding](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#kubectl-create-clusterrolebinding)
+
+Pod configured to use ServiceAccount pvviewer ?
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pvviewer
+EOF
+```
+
+```bash
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pvviewer-role
+rules:
+- apiGroups: [""]
+  resources: ["PersistentVolumes"]
+  verbs: ["list"]
+```
+
+```bash
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pvviewer-role-binding
+roleRef:
+  kind: ClusterRole
+  name: pvviewer-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+```bash
+root@controlplane ~ #  k run pvviewer --image=redis --dry-run=client -o yaml > pvviewer.yaml
+
+root@controlplane ~ #  vi pvviewer.yaml 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pvviewer
+  name: pvviewer
+spec:
+  containers:
+  - image: redis
+    name: pvviewer
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  serviceAccountName: pvviewer
+status: {}
+```
+
+```bash
+Pods authenticate to the API Server using ServiceAccounts. If the serviceAccount name is not specified, the default service account for the namespace is used during a pod creation.
+Reference: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+
+Now, create a service account pvviewer:
+
+`kubectl create serviceaccount pvviewer`
+
+To create a clusterrole:
+`kubectl api-resources | grep persistentvolumes`
+`kubectl create clusterrole pvviewer-role --resource=persistentvolumes --verb=list`
+
+To create a clusterrolebinding:
+
+`kubectl create clusterrolebinding pvviewer-role-binding --clusterrole=pvviewer-role --serviceaccount=default:pvviewer`
+
+Solution manifest file to create a new pod called pvviewer as follows:
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: pvviewer
+  name: pvviewer
+spec:
+  containers:
+  - image: redis
+    name: pvviewer
+  # Add service account name
+  serviceAccountName: pvviewer
+```
+
+2. List the InternalIP of all nodes of the cluster. Save the result to a file `/root/CKA/node_ips`.
+
+Answer should be in the format: `InternalIP of controlplane`<space>`InternalIP of node01` (in a single line)
+
+
+Explore the jsonpath loop.  
+```bash
+kubectl get nodes -o json | grep InternalIP -B 5 -A 5
+kubectl get nodes -o json | jq -c 'paths' | grep 
+kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}' > /root/CKA/node_ips
+```
+
+```bash
+kubectl get nodes -o yaml | jq
+kubectl get nodes -o yaml | jq -c 'paths' | grep type | grep -v "metadata" | grep address
+```
+
+
+3. Create a pod called `multi-pod` with two containers.
+Container 1: name: alpha, image: nginx
+Container 2: name: beta, image: busybox, command: sleep 4800
+
+Environment Variables:
+container 1:
+`name: alpha`
+
+Container 2:
+`name: beta`
+
+- Pod Name: multi-pod
+- Container 1: alpha
+- Container 2: beta
+- Container beta commands set correctly?
+- Container 1 Environment Value Set
+- Container 2 Environment Value Set
+
+```bash
+kubectl run multi-pod --image=busybox --command --dry-run=client -o yaml -- sleep 4800 
+````
+
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: multi-pod
+  name: multi-pod
+spec:
+  containers:
+  - image: nginx
+    name: alpha
+    env:
+    - name: name
+      value: "alpha"
+  - image: busybox
+    name: beta
+    env:
+    - name: name
+      value: "beta" 
+    command: ["sleep","4800"]
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+```
+
+4. Create a Pod called `non-root-pod` , image: redis:alpine
+runAsUser: 1000
+fsGroup: 2000
+
+- Pod non-root-pod fsGroup configured
+- Pod non-root-pod runAsUser configured
+
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: non-root-pod
+  name: non-root-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+    fsGroup: 2000
+  containers:
+  - image: redis:alpine
+    name: non-root-pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+```
+
+5. We have deployed a new pod called `np-test-1` and a service called `np-test-service`. Incoming connections to this service are not working. Troubleshoot and fix it.
+Create NetworkPolicy, by the name `ingress-to-nptest` that allows incoming connections to the service over port `80`.
+
+Important: Don't delete any current objects deployed
+Important: Don't Alter Existing Objects!
+
+- NetworkPolicy: Applied to All sources (Incoming traffic from all pods)?
+- NetWorkPolicy: Correct Port?
+- NetWorkPolicy: Applied to correct Pod?
+
+```bash
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-nptest
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+      - protocol: TCP
+        port: 80
+```
+
+```bash
+
+kubectl run curl --image=alphe/curl --rm -it -- sh
+/ # curl np-test-service 
+
+Solution manifest file to create a network policy ingress-to-nptest as follows:
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-nptest
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      run: np-test-1
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 80
+```
 
 
 
+6. Taint the worker node `node01` to be Unschedulable. Once done, create a pod called `dev-redis`, image `redis:alpine`, to ensure workloads are not scheduled to this worker node. Finally, create a new pod called `prod-redis` and image: `redis:alpine` with `toleration` to be scheduled on `node01`.
 
+- key: env_type, value: production, operator: Equal and effect: NoSchedule
+- Key = env_type
+- Value = production
+- Effect = NoSchedule
+- pod 'dev-redis' (no tolerations) is not scheduled on node01?
+
+- [Taints and Tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
+
+Create a pod 'prod-redis' to run on node01
+
+```bash
+root@controlplane ~ #  kubectl taint nodes node01 env_type=production:NoSchedule
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: prod-redis
+  name: prod-redis
+spec:
+  containers:
+  - image: redis:alpine
+    name: prod-redis
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  tolerations:
+  - key: "env-type"
+    operator: "Equal"
+    value: "production"
+    effect: "NoSchedule"
+status: {}
+```
+
+7. Create a pod called `hr-pod` in `hr` namespace belonging to the `production environment` and `frontend tier` .
+image: `redis:alpine`
+
+Use appropriate labels and create all the required objects if it does not exist in the system already.
+
+- hr-pod labeled with `environment=production`?
+- hr-pod labeled with `tier=frontend`?
+
+```bash
+root@controlplane ~ #  k create ns hr
+namespace/hr created
+
+root@controlplane ~ #  k run hr-pod --namespace=hr --image=redis:alpine --labels="environment=production,tier=frontend"
+pod/hr-pod created
+```
+
+8. A kubeconfig file called `super.kubeconfig` has been created under `/root/CKA`. There is something wrong with the configuration. Troubleshoot and fix it.
+
+- Fix `/root/CKA/super.kubeconfig`
+
+```bash
+kubectl get nodes --kubeconfig=/root/CKA/super.kubeconfig
+```
+
+
+9. We have created a new deployment called `nginx-deploy`. scale the deployment to `3` replicas. Has the replica's increased? Troubleshoot the issue and fix it.
+
+- deployment has `3` replicas
+
+```bash
+root@controlplane ~ #  kubectl scale deployment/nginx-deploy --replicas=3
+deployment.apps/nginx-deploy scaled
+
+root@controlplane ~ #  k describe deployments.apps nginx-deploy 
+Name:                   nginx-deploy
+...
+Replicas:               3 desired | 1 updated | 1 total | 1 available | 0 unavailable
+
+root@controlplane ~ #  k get po -n kube-system
+NAME                                   READY   STATUS             RESTARTS   AGE
+...
+kube-contro1ler-manager-controlplane   0/1     ImagePullBackOff   0          5m10s
+
+
+
+Events:
+  Type     Reason   Age                    From     Message
+  ----     ------   ----                   ----     -------
+  Normal   Pulling  31m (x4 over 32m)      kubelet  Pulling image "k8s.gcr.io/kube-contro1ler-manager:v1.20.0"
+  Warning  Failed   31m (x4 over 32m)      kubelet  Failed to pull image "k8s.gcr.io/kube-contro1ler-manager:v1.20.0": rpc error: code = Unknown desc = Error response from daemon: manifest for k8s.gcr.io/kube-contro1ler-manager:v1.20.0 not found: manifest unknown: Failed to fetch "v1.20.0" from request "/v2/kube-contro1ler-manager/manifests/v1.20.0".
+  Warning  Failed   31m (x4 over 32m)      kubelet  Error: ErrImagePull
+  Normal   BackOff  7m39s (x110 over 32m)  kubelet  Back-off pulling image "k8s.gcr.io/kube-contro1ler-manager:v1.20.0"
+  Warning  Failed   2m36s (x132 over 32m)  kubelet  Error: ImagePullBackOff
+```
+
+
+Use the command kubectl scale to increase the replica count to 3.
+
+`kubectl scale deploy nginx-deploy --replicas=3`
+
+The controller-manager is responsible for scaling up pods of a replicaset. If you inspect the control plane components in the kube-system namespace, you will see that the controller-manager is not running.
+
+`kubectl get pods -n kube-system`
+
+The command running inside the controller-manager pod is incorrect.
+After fix all the values in the file and wait for controller-manager pod to restart.
+Alternatively, you can run sed command to change all values at once:
+
+sed -i 's/kube-contro1ler-manager/kube-controller-manager/g' /etc/kubernetes/manifests/kube-controller-manager.yaml
+
+This will fix the issues in controller-manager yaml file.
+At last, inspect the deployment by using below command:
+
+kubectl get deploy
