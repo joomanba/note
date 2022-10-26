@@ -86,3 +86,10 @@ $ popd
 cat /root/CKA/john.csr | base64 | tr -d "\n"
 ```
 
+#### scp
+
+scp [옵션] [파일명 1] [파일명 2] [원격지_id]@[원격지_ip]:[받는 위치]
+```
+scp -i querycaptor.pem querycaptor.tar ec2-user@172.31.10.35:/home/ec2-user
+```
+

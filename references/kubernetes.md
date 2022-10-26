@@ -40,6 +40,18 @@ kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[].cluster.c
 --dry-run=client flag to preview the object that would be sent to your cluster, without really submitting it..
 ```
 
+## Cheat Sheet
+### Updating resources
+```
+kubectl set image deployment/frontend www=image:v2               # Rolling update "www" containers of "frontend" deployment, updating the image
+kubectl rollout history deployment/frontend                      # Check the history of deployments including the revision
+kubectl rollout undo deployment/frontend                         # Rollback to the previous deployment
+kubectl rollout undo deployment/frontend --to-revision=2         # Rollback to a specific revision
+kubectl rollout status -w deployment/frontend                    # Watch rolling update status of "frontend" deployment until completion
+kubectl rollout restart deployment/frontend                      # Rolling restart of the "frontend" deployment
+
+```
+
 ## Kubernetes in action
 ### Chapter 09
 
