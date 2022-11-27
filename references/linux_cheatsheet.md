@@ -93,3 +93,12 @@ scp [옵션] [파일명 1] [파일명 2] [원격지_id]@[원격지_ip]:[받는 �
 scp -i querycaptor.pem querycaptor.tar ec2-user@172.31.10.35:/home/ec2-user
 ```
 
+#### yum
+
+-y 옵션을 통해 설치 과정에서 묻는 질문들에 모두 yes를 입력하도록 함
+
+```
+sudo amazon-linux-extras install epel
+```
+
+

@@ -1,36 +1,67 @@
-```
-use querypie;
-update proxies set company_uuid=(select company_uuid from companies where id='1') where id='1';
-update company_settings set agent_enabled=1 where id=1; 
-update proxies set host='34.227.78.215', agent_port=9000, port_from=40000, port_to=41000 where id=1;
-```
+74  watch -n 2 ./migrate.sh status
+   75  ls -al
+   76  ll
+   77  docker-compose --env-file compose-env  --profile api up -d
+   78  vi docker-compose.yml
+   79  docker-compose --env-file compose-env  --profile api up -d
+   80  docker-compose --env-file compose-env  --profile middleware up -d
+   81  curl localhost:8080
+   82  curl localhost:3000
+   83  curl localhost:8080
+   84  curl localhost:3000
+   85  ls
+   86  ll
+   87  mysql -h $DB_HOST -u $DB_USERNAME -p
+   88  ls
+   89  ll
+   90  curl https://querypie-api.kurlypay.co.kr
+   91  ls
+   92  tail -f /var/log/querypie/middleware/middleware.log
+   93  ls
+   94  ll
+   95  tail -f /var/log/querypie/api/API.log
+   96  hostname
+   97  sudo vi /etc/hosts
+   98  history | grep api
+   99  docker-compose --env-file compose-env  --profile api up -d
+  100  tail -f /var/log/querypie/api/API.log
+  101  curl https://querypie-proxy.kurlypay.co.kr:6000
+  102  curl -kv https://querypie-proxy.kurlypay.co.kr:6000
+  103  clear
+  104  sudo setenforce 0
+  105  curl -L https://dl.querypie.com/releases/9.8/setup.sh -o setup.sh
+  106  chmod +x setup.sh
+  107  export INSTALL_TYPE=poc; ./setup.sh
+  108  cd querypie
+  109  sudo su -
+  110  docker login harbor.chequer.io
 
 
-
-```
-
-안녕하세요.
-체커 장의진입니다.
-답변이 늦어진 점 양해 부탁드립니다.
-
-쿼리파이 설치를 위한 인프라스펙 및 관련 정보 말씀드립니다.
-
-1. 작업순서
-말씀 인프라 스펙에 따라 인프라가 사전에 구성되었을 경우, 아래와 같은 순서로 작업이 진행됩니다.
-DB에 저장된 데이터의 크기에 따라 마이그레이션 작업이 1시간 이상 소요될 수도 있습니다.
-특별한 이슈가 없으면 c번 쿼리파이 설치는 1시간 이내에 완료 가능합니다.
-
-a. 쿼리파이 중단
-b. 쿼리파이 데이터베이스 마이그레이션 
-c. 쿼리파이 설치 (Middleware, API, Proxy)
-d. 쿼리파이 실행 및 테스트
-
-
-2. 사전체크리스트
-
-a. EC2, MySQL, ElasticCache 정확한 사양으로 설치되어 있는가?
-b. Security Group이 정확하게 설정되어 있는가?
-c. Target Group을 포함해서 NLB가 정상적으로 설정되어 있는가?
-d. ACM, Domain Name이 정확하게 설정되어 있는가?
-
-```
+Springframework.beans.factory.BeanCreationException: Error creating bean with name 'org.springframework.transaction.annotation.ProxyTransactionManagementConfiguration': Initialization of bean failed; nested exception is org.springframework.beans.factory.NoSuchBeanDefinitionException: No bean named 'org.springframework.context.annotation.ConfigurationClassPostProcessor.importRegistry' available
+	at org.springframework.boot.context.logging.LoggingApplicationListener.initializeSystem(LoggingApplicationListener.java:327)
+	at org.springframework.boot.context.logging.LoggingApplicationListener.initialize(LoggingApplicationListener.java:281)
+	at org.springframework.boot.context.logging.LoggingApplicationListener.onApplicationEnvironmentPreparedEvent(LoggingApplicationListener.java:239)
+	at org.springframework.boot.context.logging.LoggingApplicationListener.onApplicationEvent(LoggingApplicationListener.java:216)
+	at org.springframework.context.event.SimpleApplicationEventMulticaster.doInvokeListener(SimpleApplicationEventMulticaster.java:176)
+	at org.springframework.context.event.SimpleApplicationEventMulticaster.invokeListener(SimpleApplicationEventMulticaster.java:169)
+	at org.springframework.context.event.SimpleApplicationEventMulticaster.multicastEvent(SimpleApplicationEventMulticaster.java:143)
+	at org.springframework.context.event.SimpleApplicationEventMulticaster.multicastEvent(SimpleApplicationEventMulticaster.java:131)
+	at org.springframework.boot.context.event.EventPublishingRunListener.environmentPrepared(EventPublishingRunListener.java:82)
+	at org.springframework.boot.SpringApplicationRunListeners.lambda$environmentPrepared$2(SpringApplicationRunListeners.java:63)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+	at org.springframework.boot.SpringApplicationRunListeners.doWithListeners(SpringApplicationRunListeners.java:117)
+	at org.springframework.boot.SpringApplicationRunListeners.doWithListeners(SpringApplicationRunListeners.java:111)
+	at org.springframework.boot.SpringApplicationRunListeners.environmentPrepared(SpringApplicationRunListeners.java:62)
+	at org.springframework.boot.SpringApplication.prepareEnvironment(SpringApplication.java:362)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:320)
+	at org.springframework.boot.builder.SpringApplicationBuilder.run(SpringApplicationBuilder.java:144)
+	at com.chequer.querypie.ApiApplication.main(ApiApplication.java:73)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.springframework.boot.loader.MainMethodRunner.run(MainMethodRunner.java:49)
+	at org.springframework.boot.loader.Launcher.launch(Launcher.java:107)
+	at org.springframework.boot.loader.Launcher.launch(Launcher.java:58)
+	at org.springframework.boot.loader.JarLauncher.main(JarLauncher.java:88)
+Caused by: java.lang.IllegalStateException: Logback configuration error detected:

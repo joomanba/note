@@ -23,4 +23,10 @@ $ docker network prune
 
 # 사용하지 않는 Docker 오브젝트 전부 삭제
 $ docker system prune --volumes
+
+# Container 디스크 사용량 조회
+$ docker system df -v
+
+# 가장 최근에 생성된 컨테이너 조회
+$ docker ps -al
 ```
